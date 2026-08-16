@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>xCloud · 云盘</title>
+  <link rel="stylesheet" href="/classic.css" />
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 登录 -->
+  <div id="login-box">
+    <h1>xCloud</h1>
+    <p class="sub">请登录后使用云盘</p>
+    <div class="form-row"><label>用户名</label><input type="text" id="u" autocomplete="username" /></div>
+    <div class="form-row"><label>密码</label><input type="password" id="p" autocomplete="current-password" /></div>
+    <div class="err" id="login-err"></div>
+    <button class="btn" id="btn-login">登录</button>
+  </div>
+
+  <!-- 文件 -->
+  <div id="files-box" style="display:none">
+    <div class="topbar">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="actions">
+        <button class="btn" id="btn-mkdir">新建文件夹</button>
+        <span class="btn btn-upload">
+          上传文件
+          <form id="upload-form" action="/api/files/upload" method="post" enctype="multipart/form-data" target="upload-frame">
+            <input type="hidden" name="path" id="upload-path" value="/" />
+            <input type="file" name="file" id="upload-file" />
+          </form>
+        </span>
+        <button class="btn" id="btn-logout">退出登录</button>
+      </div>
+    </div>
+
+    <div class="file-head">
+      <span class="col-name">名称</span><span class="col-size">大小</span><span class="col-time">修改时间</span><span class="col-op">操作</span>
+    </div>
+    <ul class="file-list" id="file-list"></ul>
+    <div class="err" id="files-err"></div>
+    <iframe name="upload-frame" id="upload-frame" style="display:none"></iframe>
+  </div>
+
+</div>
+<script src="/classic.js"></script>
+</body>
+</html>

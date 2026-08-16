@@ -1,0 +1,78 @@
+/* xCloud · IE 兼容页样式（传统布局，无 CSS 变量 / 无 flex / 无 grid） */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  background: #f5f5f7; color: #1d1d1f; font-size: 14px; line-height: 1.6;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px; }
+
+/* 登录 */
+#login-box { max-width: 340px; margin: 60px auto 0; background: #fff; border-radius: 18px; padding: 32px 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+#login-box h1 { font-size: 26px; letter-spacing: -0.5px; margin-bottom: 4px; }
+#login-box .sub { color: #6e6e73; font-size: 13px; margin-bottom: 20px; }
+.form-row { margin-bottom: 14px; }
+.form-row label { display: block; font-size: 13px; color: #424245; margin-bottom: 5px; }
+.form-row input {
+  width: 100%; height: 40px; padding: 0 12px; font-size: 14px;
+  border: 1px solid #d2d2d7; border-radius: 8px; outline: none;
+}
+.form-row input:focus { border-color: #0071e3; }
+
+/* 顶部 */
+.topbar { overflow: hidden; margin: 8px 0 14px; }
+.crumbs { float: left; }
+.crumbs a, .crumbs span { font-size: 14px; color: #6e6e73; text-decoration: none; padding: 4px 6px; }
+.crumbs a:hover { color: #0071e3; }
+.crumbs .cur { color: #1d1d1f; font-weight: 600; }
+.crumbs .sep { color: #c7c7cc; padding: 0 2px; }
+.actions { float: right; }
+
+/* 按钮 */
+.btn {
+  display: inline-block; height: 34px; line-height: 34px; padding: 0 16px;
+  border: none; border-radius: 17px; background: #e8e8ed; color: #1d1d1f;
+  font-size: 13px; cursor: pointer; text-decoration: none; vertical-align: middle;
+}
+.btn:hover { background: #dcdce2; }
+.btn-primary { background: #0071e3; color: #fff; }
+.btn-primary:hover { background: #0066cc; }
+.btn-danger { background: #fce8e6; color: #e04038; }
+.btn-danger:hover { background: #f8d7d4; }
+
+/* 上传按钮（内含表单） */
+.btn-upload { position: relative; overflow: hidden; cursor: pointer; }
+.btn-upload form { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
+.btn-upload input[type="file"] { width: 100%; height: 100%; cursor: pointer; font-size: 60px; }
+
+/* 文件列表 */
+.file-head { overflow: hidden; padding: 8px 12px; border-bottom: 1px solid #e5e5ea; color: #86868b; font-size: 12px; }
+.col-name { float: left; width: 50%; }
+.col-size { float: left; width: 16%; text-align: right; }
+.col-time { float: left; width: 22%; text-align: right; }
+.col-op { float: right; width: 12%; text-align: right; }
+
+.file-list { list-style: none; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); overflow: hidden; }
+.file-list li { overflow: hidden; padding: 9px 12px; border-bottom: 1px solid #f0f0f2; }
+.file-list li:last-child { border-bottom: none; }
+.file-list li:hover { background: #fafafa; }
+.f-name { float: left; width: 50%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.f-size { float: left; width: 16%; text-align: right; color: #86868b; font-size: 12px; }
+.f-time { float: left; width: 22%; text-align: right; color: #86868b; font-size: 12px; }
+.f-op { float: right; width: 12%; text-align: right; }
+.f-op a { font-size: 12px; color: #0071e3; text-decoration: none; margin-left: 8px; }
+.f-op a.del { color: #e04038; }
+.f-icon {
+  display: inline-block; min-width: 26px; text-align: center; font-size: 11px; font-weight: 600;
+  color: #fff; border-radius: 5px; padding: 2px 4px; margin-right: 8px; vertical-align: middle;
+}
+.f-icon.dir { background: #0071e3; }
+.f-icon.file { background: #8e8e93; }
+.f-icon.word { background: #2b7cd3; }
+.f-icon.cell { background: #1f9d4d; }
+.f-icon.slide { background: #e08400; }
+.f-icon.pdf { background: #e04038; }
+
+/* 空态 / 错误 */
+.empty { padding: 40px; text-align: center; color: #86868b; }
+.err { color: #e04038; font-size: 13px; margin: 8px 0; min-height: 18px; }

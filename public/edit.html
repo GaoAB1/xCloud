@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>在线编辑 · xCloud</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #fff; }
+    #placeholder { position: absolute; inset: 0; }
+    #loading, #error {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; color: #6e6e73; font-size: 15px; background: #fff;
+    }
+    #error { color: #ff3b30; padding: 0 24px; text-align: center; line-height: 1.6; }
+    .spin {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 3px solid rgba(0,0,0,0.1); border-top-color: #0071e3;
+      animation: rot 0.9s linear infinite;
+    }
+    @keyframes rot { to { transform: rotate(360deg); } }
+    a { color: #0071e3; }
+  </style>
+</head>
+<body>
+  <div id="placeholder"></div>
+  <div id="loading"><div class="spin"></div><span>正在加载编辑器…</span></div>
+  <div id="error" hidden></div>
+  <script src="/edit.js"></script>
+</body>
+</html>
