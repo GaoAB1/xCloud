@@ -304,7 +304,7 @@ function parentPath(rel) {
 function handleUpload(req) {
   return new Promise((resolve) => {
     if (!Busboy) return resolve({ error: '服务器未安装 busboy，无法上传' });
-    const bb = Busboy({ headers: req.headers, limits: { files: 1, fileSize: MAX_UPLOAD } });
+    const bb = Busboy({ headers: req.headers, limits: { files: 1, fileSize: MAX_UPLOAD }, defParamCharset: 'utf8' });
     let targetDir = '';
     let finalPath = null;
     let error = null;
@@ -728,7 +728,13 @@ async function handleAPI(req, res, pathname, url) {
       },
     };
     config.token = signJWT(config);
-    return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, config });
+    // 预检 OnlyOffice 服务是否可达（healthcheck 接口），供前端给出清晰提示
+    let onlyofficeUp = false;
+    try {
+      const probe = await fetchWithTimeout((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', 2500);
+      onlyofficeUp = probe === true || probe === 'true' || !!probe;
+    } catch { /* 不可达 */ }
+    return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, onlyofficeUp, config });
   }
 
   return sendError(res, 404, '接口不存在');
