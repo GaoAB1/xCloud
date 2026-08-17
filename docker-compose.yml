@@ -10,14 +10,14 @@ services:
       - ./data:/app/data
     environment:
       - PORT=3000
-      # 浏览器访问 OnlyOffice 的地址（改为你的服务器 IP / 域名）
-      - ONLYOFFICE_URL=http://localhost:8080
-      # 面板(容器内)访问 OnlyOffice 的地址（服务名:容器端口 80）
+      # 浏览器访问 OnlyOffice 的地址（内网填 NAS IP，公网填域名，如 http://office.soulan.top）
+      - ONLYOFFICE_URL=${ONLYOFFICE_URL:-http://localhost:8080}
+      # 面板(容器内)访问 OnlyOffice 的地址（服务名:容器端口 80，保持内网）
       - ONLYOFFICE_INTERNAL_URL=http://onlyoffice
-      # OnlyOffice(容器内)访问面板的地址，用于下载文档与保存回调
-      - PANEL_URL=http://xcloud:3000
-      # 面板 JWT 密钥（保护 raw 下载与保存回调接口），务必改为随机长字符串
-      - JWT_SECRET=please-change-me-to-a-long-random-string
+      # OnlyOffice(容器内)访问面板的地址，用于下载文档与保存回调（保持内网）
+      - PANEL_URL=${PANEL_URL:-http://xcloud:3000}
+      # JWT 密钥：面板与 OnlyOffice 必须使用同一个值（建议在 .env 中统一设置）
+      - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-string}
     depends_on:
       - onlyoffice
 
@@ -28,8 +28,9 @@ services:
     ports:
       - "8080:80"
     environment:
-      # 关闭 OnlyOffice 自带 JWT；面板用自己的 JWT 保护文档下载与保存回调
-      - JWT_ENABLED=false
+      # 开启 OnlyOffice JWT，并与面板共享同一密钥（JWT_SECRET 必须与 xcloud 完全一致）
+      - JWT_ENABLED=true
+      - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-string}
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_log:/var/log/onlyoffice
