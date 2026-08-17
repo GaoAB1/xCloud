@@ -300,6 +300,20 @@ function parentPath(rel) {
   return idx <= 0 ? '/' : clean.slice(0, idx);
 }
 
+// 修复 busboy 可能将 UTF-8 中文文件名误按 latin1 解码的乱码（双保险）
+function decodeFilename(name) {
+  if (!name) return '';
+  // 特征：文件名中出现大量 0x80-0xFF 的拉丁扩展字符（UTF-8 被 latin1 误解码的典型乱码）
+  if (/[\u0080-\u00FF]/.test(name)) {
+    try {
+      const fixed = Buffer.from(name, 'latin1').toString('utf8');
+      // 还原后无替换字符且含 CJK 字符才采纳，避免破坏本合法的拉丁文件名
+      if (!fixed.includes('\uFFFD') && /[\u4e00-\u9fff]/.test(fixed)) return fixed;
+    } catch { /* 保留原名 */ }
+  }
+  return name;
+}
+
 // multipart 上传（busboy）
 function handleUpload(req) {
   return new Promise((resolve) => {
@@ -318,7 +332,7 @@ function handleUpload(req) {
     bb.on('file', (name, file, info) => {
       sawFile = true;
       const dir = resolveFilePath(targetDir);
-      const fname = path.basename(String(info.filename || ''));
+      const fname = path.basename(decodeFilename(String(info.filename || '')));
       if (!dir || !fname) { file.resume(); error = '路径无效或文件名为空'; return; }
       finalPath = uniqueFilePath(path.join(dir, fname));
       const ws = fs.createWriteStream(finalPath);
