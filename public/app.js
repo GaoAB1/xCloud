@@ -48,10 +48,11 @@ function toast(msg) {
 function showView(name) {
   $('#view-setup').hidden = name !== 'setup';
   $('#view-login').hidden = name !== 'login';
-  const authed = name === 'home' || name === 'files';
+  const authed = name === 'home' || name === 'files' || name === 'mail';
   $('#navbar').hidden = !authed;
   $('#view-dashboard').hidden = name !== 'home';
   $('#view-files').hidden = name !== 'files';
+  $('#view-mail').hidden = name !== 'mail';
 }
 
 function setSegActive(seg, activeBtn) {
@@ -299,6 +300,7 @@ function openAppSheet(app) {
   $('#app-image').value = '';
   const type = (app && app.icon_type) || 'letter';
   $$('input[name="icon_type"]').forEach((r) => { r.checked = r.value === type; });
+  // 若编辑 image 类型，保留原图（icon_value 为文件名，非 dataURL）
   if (type === 'image' && app && app.icon_value && !app.icon_value.startsWith('data:')) {
     appImageDataURL = `/uploads/${app.icon_value}`;
   }
@@ -383,12 +385,14 @@ function renderManageList() {
     ul.appendChild(li);
   });
 
+  // 拖拽排序
   let dragged = null;
   ul.querySelectorAll('.manage-item').forEach((item) => {
     item.addEventListener('dragstart', () => { dragged = item; item.classList.add('dragging'); });
     item.addEventListener('dragend', async () => {
       item.classList.remove('dragging');
       const order = $$('#manage-list .manage-item').map((x) => x.dataset.id);
+      // 更新本地顺序
       const map = new Map(currentApps.map((a) => [a.id, a]));
       currentApps = order.map((id) => map.get(id)).filter(Boolean);
       renderApps();
@@ -588,13 +592,14 @@ function bindEvents() {
     } catch (msg) { showErr(err, msg.message); }
   });
 
-  // 导航标签切换（主页 / 文件）
+  // 导航标签切换（主页 / 文件 / 邮件）
   $('#nav-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     const v = b.dataset.view;
     if (v === 'home') { showView('home'); setActiveTab('home'); }
     else if (v === 'files') { showView('files'); setActiveTab('files'); loadFiles(currentPath); }
+    else if (v === 'mail') { showView('mail'); setActiveTab('mail'); enterMail(); }
   });
 
   // 文件：上传 / 新建文件夹
@@ -646,6 +651,83 @@ function bindEvents() {
     e.preventDefault(); dragDepth = 0; $('#drop-hint').hidden = true;
     if (!isFilesVisible()) return;
     if (e.dataTransfer && e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+  });
+
+  // 邮件：写邮件
+  $('#btn-mail-compose').addEventListener('click', () => {
+    if (!mailAccounts.length) { toast('请先添加邮件账户'); return; }
+    openComposeSheet(null);
+  });
+  $('#btn-mail-refresh').addEventListener('click', () => loadMailList(false));
+  $('#compose-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#compose-error');
+    err.hidden = true;
+    const files = $('#compose-attachments').querySelectorAll('.attach-chip');
+    const attachments = Array.from(files).map((f) => ({
+      filename: f.dataset.name, contentType: f.dataset.type, content: f.dataset.content,
+    })).filter((a) => a.content);
+    try {
+      await api('/api/mail/send', {
+        method: 'POST',
+        body: {
+          account: $('#compose-account').value,
+          to: $('#compose-to').value,
+          cc: $('#compose-cc').value,
+          bcc: $('#compose-bcc').value,
+          subject: $('#compose-subject').value,
+          text: $('#compose-body').value,
+          attachments,
+        },
+      });
+      closeSheet();
+      toast('邮件已发送');
+    } catch (msg) { showErr(err, msg.message); }
+  });
+  $('#btn-add-attachment').addEventListener('click', () => $('#compose-file').click());
+  $('#compose-file').addEventListener('change', (e) => {
+    Array.from(e.target.files || []).forEach((f) => {
+      if (f.size > 20 * 1024 * 1024) { toast('附件过大（≤20MB）'); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = String(reader.result).split(',')[1] || '';
+        const chip = document.createElement('span');
+        chip.className = 'attach-chip';
+        chip.dataset.name = f.name; chip.dataset.type = f.type || 'application/octet-stream'; chip.dataset.content = base64;
+        chip.innerHTML = `<span>📎 ${escapeHTML(f.name)} (${fmtSize(f.size)})</span><button class="att-del" type="button">×</button>`;
+        chip.querySelector('.att-del').addEventListener('click', () => chip.remove());
+        $('#compose-attachments').appendChild(chip);
+      };
+      reader.readAsDataURL(f);
+    });
+    e.target.value = '';
+  });
+  // 邮件账户表单
+  $('#mailaccount-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#ma-error');
+    err.hidden = true;
+    try {
+      await api('/api/mail/accounts', {
+        method: 'POST',
+        body: {
+          name: $('#ma-name').value,
+          email: $('#ma-email').value.trim(),
+          password: $('#ma-password').value,
+          imapHost: $('#ma-imap').value.trim(),
+          imapSecure: $('#ma-imap-ssl').checked,
+          smtpHost: $('#ma-smtp').value.trim(),
+          smtpSecure: $('#ma-smtp-ssl').checked,
+        },
+      });
+      closeSheet();
+      toast('账户已添加');
+      const data = await api('/api/mail/accounts');
+      mailAccounts = data.accounts || [];
+      mailCurrentAccount = mailAccounts[mailAccounts.length - 1] || null;
+      renderMailAccounts();
+      if (mailCurrentAccount) { await loadMailFolders(); await loadMailList(true); }
+    } catch (msg) { showErr(err, msg.message); }
   });
 
   // 导航滚动阴影
@@ -824,6 +906,301 @@ function openNameSheet(mode, target, type) {
 function isFilesVisible() { return !$('#view-files').hidden; }
 function setActiveTab(v) {
   $('#nav-tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+}
+
+/* ═══════════════ 邮件 ═══════════════ */
+let mailAccounts = [];
+let mailCurrentAccount = null;
+let mailFoldersData = { folders: [], special: { junk: [], trash: [], sent: [], draft: [] } };
+let mailCurrentFolder = 'INBOX';
+let mailCurrentUid = null;
+let mailTimer = null;
+const MAIL_PRESETS = {
+  qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' },
+  163: { imap: 'imap.163.com', smtp: 'smtp.163.com' },
+  gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' },
+  outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' },
+};
+function applyMailPreset() {
+  const p = MAIL_PRESETS[$('#ma-preset').value];
+  if (p) { $('#ma-imap').value = p.imap; $('#ma-smtp').value = p.smtp; }
+}
+function fmtMailTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const pad = (n) => String(n).padStart(2, '0');
+  if (sameDay) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+function fmtSize(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+async function enterMail() {
+  stopMailPoll();
+  try {
+    const data = await api('/api/mail/accounts');
+    mailAccounts = data.accounts || [];
+    renderMailAccounts();
+    if (mailAccounts.length) {
+      if (!mailCurrentAccount || !mailAccounts.some((a) => a.id === mailCurrentAccount.id)) {
+        mailCurrentAccount = mailAccounts[0];
+      }
+      await loadMailFolders();
+      await loadMailList(true);
+      startMailPoll();
+    } else {
+      $('#mail-folders').innerHTML = '';
+      $('#mail-list').innerHTML = '';
+      $('#mail-empty').hidden = false;
+      $('#mail-empty').textContent = '还没有配置邮件账户，点击左侧「添加账户」。';
+      $('#mail-folder-title').textContent = '邮件';
+      $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">请先添加邮件账户</div>';
+      $('#mail-nav-badge').hidden = true;
+    }
+  } catch (e) {
+    $('#mail-empty').hidden = false;
+    $('#mail-empty').textContent = '邮件模块加载失败：' + e.message;
+  }
+}
+
+function renderMailAccounts() {
+  const wrap = $('#mail-accounts');
+  if (!mailAccounts.length) {
+    wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
+  } else {
+    wrap.innerHTML = mailAccounts.map((a) => `
+      <button class="mail-account-item${mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : ''}" data-id="${a.id}">
+        <span class="ma-name" title="${escapeHTML(a.email)}">${escapeHTML(a.name || a.email)}</span>
+        <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
+      </button>
+    `).join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
+  }
+  wrap.querySelectorAll('.mail-account-item').forEach((item) => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('[data-del]')) return;
+      mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id);
+      renderMailAccounts();
+      loadMailFolders();
+    });
+  });
+  wrap.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const id = b.dataset.del;
+    if (!confirm('确定删除该邮件账户？')) return;
+    try {
+      await api(`/api/mail/accounts/${id}`, { method: 'DELETE' });
+      mailAccounts = mailAccounts.filter((a) => a.id !== id);
+      if (mailCurrentAccount && mailCurrentAccount.id === id) mailCurrentAccount = mailAccounts[0] || null;
+      renderMailAccounts();
+      if (mailCurrentAccount) { await loadMailFolders(); await loadMailList(true); } else { $('#mail-empty').hidden = false; $('#mail-empty').textContent = '还没有配置邮件账户。'; }
+    } catch (err) { toast(err.message); }
+  }));
+  const addBtn = $('#btn-add-mailaccount');
+  if (addBtn) addBtn.addEventListener('click', () => openMailAccountSheet());
+}
+
+async function loadMailFolders() {
+  if (!mailCurrentAccount) return;
+  try {
+    const data = await api(`/api/mail/folders?account=${mailCurrentAccount.id}`);
+    mailFoldersData = data;
+    renderMailFolders();
+    // 自动选中收件箱或当前文件夹
+    if (!mailFoldersData.folders.some((f) => f.path === mailCurrentFolder)) {
+      mailCurrentFolder = 'INBOX';
+    }
+  } catch (e) { toast(e.message); }
+}
+
+function renderMailFolders() {
+  const wrap = $('#mail-folders');
+  const folders = mailFoldersData.folders || [];
+  // 优先级排序：收件箱、垃圾邮件、已发送、其他
+  const rank = (p) => {
+    const l = p.toLowerCase();
+    if (l === 'inbox') return 0;
+    if (/(junk|spam|垃圾)/.test(l)) return 1;
+    if (/(trash|deleted|已删除|回收站)/.test(l)) return 3;
+    if (/(sent|已发送)/.test(l)) return 4;
+    if (/(draft|草稿)/.test(l)) return 5;
+    return 2;
+  };
+  const sorted = folders.slice().sort((a, b) => rank(a.path) - rank(b.path));
+  const ICO = {
+    inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+    junk: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    sent: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    draft: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+  };
+  wrap.innerHTML = sorted.map((f) => {
+    const l = f.path.toLowerCase();
+    let icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+    if (l === 'inbox') icon = ICO.inbox;
+    else if (/(junk|spam|垃圾)/.test(l)) icon = ICO.junk;
+    else if (/(sent|已发送)/.test(l)) icon = ICO.sent;
+    else if (/(trash|deleted|已删除|回收站)/.test(l)) icon = ICO.trash;
+    else if (/(draft|草稿)/.test(l)) icon = ICO.draft;
+    const active = f.path === mailCurrentFolder ? ' active' : '';
+    const isJunk = /(junk|spam|垃圾)/.test(f.path.toLowerCase());
+    return `<button class="mail-folder${active}" data-folder="${escapeHTML(f.path)}">${icon}<span>${escapeHTML(isJunk ? '垃圾邮件' : f.path)}</span></button>`;
+  }).join('');
+  wrap.querySelectorAll('.mail-folder').forEach((b) => b.addEventListener('click', () => {
+    mailCurrentFolder = b.dataset.folder;
+    renderMailFolders();
+    loadMailList(true);
+  }));
+}
+
+async function loadMailList(clearRead = false) {
+  if (!mailCurrentAccount) return;
+  const listEl = $('#mail-list');
+  const loadingEl = $('#mail-loading');
+  const emptyEl = $('#mail-empty');
+  $('#mail-folder-title').textContent = /(junk|spam|垃圾)/i.test(mailCurrentFolder) ? '垃圾邮件' : mailCurrentFolder;
+  if (clearRead) { $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">选择一封邮件查看内容</div>'; mailCurrentUid = null; }
+  loadingEl.hidden = false;
+  listEl.innerHTML = '';
+  emptyEl.hidden = true;
+  try {
+    const data = await api(`/api/mail/list?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}`);
+    loadingEl.hidden = true;
+    if (!data.items || !data.items.length) {
+      emptyEl.hidden = false;
+      emptyEl.textContent = '该文件夹暂无邮件';
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.innerHTML = data.items.map((m) => `
+      <button class="mail-item${m.seen ? '' : ' unseen'}${m.uid === mailCurrentUid ? ' active' : ''}" data-uid="${m.uid}">
+        <div class="mi-from"><span>${escapeHTML(m.fromName || m.fromAddr || '(未知发件人)')}</span>${m.flags && m.flags.includes('\\Flagged') ? '<span class="mi-flag">★</span>' : ''}<span class="mi-date">${fmtMailTime(m.date)}</span></div>
+        <div class="mi-subject">${escapeHTML(m.subject)}</div>
+        <div class="mi-preview">${escapeHTML((m.fromAddr || '') + ' · ' + fmtSize(m.size))}</div>
+      </button>
+    `).join('');
+    listEl.querySelectorAll('.mail-item').forEach((b) => b.addEventListener('click', () => readMail(Number(b.dataset.uid))));
+    // 刷新未读徽标
+    updateMailBadge();
+  } catch (e) {
+    loadingEl.hidden = true;
+    emptyEl.hidden = false;
+    emptyEl.textContent = '加载失败：' + e.message;
+  }
+}
+
+async function readMail(uid) {
+  if (!mailCurrentAccount || !uid) return;
+  mailCurrentUid = uid;
+  document.querySelectorAll('.mail-item').forEach((el) => el.classList.toggle('active', Number(el.dataset.uid) === uid));
+  $('#mail-read-pane').innerHTML = '<div class="mail-loading">正在加载邮件…</div>';
+  try {
+    const m = await api(`/api/mail/read?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}&uid=${uid}`);
+    const htmlBody = m.html || (m.text ? m.text.split('\n').map((l) => escapeHTML(l)).join('<br>') : '<p style="color:var(--text-3)">(无正文)</p>');
+    const atts = (m.attachments || []).map((a, i) => `
+      <button class="mr-att" data-dl="${i}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span class="att-name">${escapeHTML(a.filename)}</span>
+        <span class="att-size">${fmtSize(a.size)}</span>
+      </button>
+    `).join('');
+    $('#mail-read-pane').innerHTML = `
+      <div class="mail-read-head">
+        <div class="mr-subject">${escapeHTML(m.subject)}</div>
+        <div class="mr-meta">
+          <span class="mr-avatar">${escapeHTML((m.from && (m.from.name || m.from.address || '?')).slice(0, 1).toUpperCase())}</span>
+          <div>
+            <div class="mr-from">${escapeHTML((m.from && (m.from.name || m.from.address)) || '未知发件人')}</div>
+            <div>${escapeHTML((m.from && m.from.address) || '')} · ${fmtMailTime(m.date)}</div>
+          </div>
+        </div>
+        <div class="mr-actions">
+          <button class="btn-secondary btn-sm" id="btn-reply">回复</button>
+          <button class="btn-secondary btn-sm" id="btn-mail-spam">标记垃圾</button>
+          <button class="btn-secondary btn-sm" id="btn-mail-trash">删除</button>
+        </div>
+      </div>
+      <div class="mr-body">${htmlBody}</div>
+      ${atts ? `<div class="mr-attachments"><span class="mr-att-title">附件 (${(m.attachments || []).length})</span>${atts}</div>` : ''}
+    `;
+    const reply = $('#btn-reply');
+    if (reply) reply.addEventListener('click', () => openComposeSheet(m));
+    const spam = $('#btn-mail-spam');
+    if (spam) spam.addEventListener('click', async () => { await mailFlag('spam'); });
+    const trash = $('#btn-mail-trash');
+    if (trash) trash.addEventListener('click', async () => { await mailFlag('delete'); });
+    $('#mail-read-pane').querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => downloadAttachment(Number(b.dataset.dl), m)));
+    // 标记已读后刷新列表未读态
+    const item = document.querySelector(`.mail-item[data-uid="${uid}"]`);
+    if (item) item.classList.remove('unseen');
+    updateMailBadge();
+  } catch (e) {
+    $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">读取失败：' + escapeHTML(e.message) + '</div>';
+  }
+}
+
+async function mailFlag(action) {
+  if (!mailCurrentUid) return;
+  try {
+    await api('/api/mail/flag', { method: 'POST', body: { account: mailCurrentAccount.id, folder: mailCurrentFolder, uids: [mailCurrentUid], action } });
+    toast(action === 'spam' ? '已标记为垃圾邮件' : '已删除');
+    loadMailList(true);
+  } catch (e) { toast(e.message); }
+}
+
+function downloadAttachment(idx, msg) {
+  window.open(`/api/mail/attachment?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}&uid=${mailCurrentUid}&index=${idx}`, '_blank');
+}
+
+function openComposeSheet(replyMsg) {
+  const sel = $('#compose-account');
+  sel.innerHTML = mailAccounts.map((a) => `<option value="${a.id}">${escapeHTML(a.name || a.email)}</option>`).join('');
+  $('#compose-to').value = replyMsg && replyMsg.from && replyMsg.from.address ? replyMsg.from.address : '';
+  $('#compose-cc').value = '';
+  $('#compose-bcc').value = '';
+  $('#compose-subject').value = replyMsg ? 'Re: ' + replyMsg.subject : '';
+  $('#compose-body').value = replyMsg ? `\n\n\n—— 原始邮件 ——\n发件人: ${replyMsg.from && (replyMsg.from.name || replyMsg.from.address)}\n日期: ${fmtMailTime(replyMsg.date)}\n主题: ${replyMsg.subject}\n\n${replyMsg.text || ''}` : '';
+  $('#compose-attachments').innerHTML = '';
+  $('#compose-error').hidden = true;
+  openSheet($('#compose-sheet'));
+}
+
+function openMailAccountSheet() {
+  $('#ma-name').value = '';
+  $('#ma-email').value = '';
+  $('#ma-password').value = '';
+  $('#ma-imap').value = '';
+  $('#ma-smtp').value = '';
+  $('#ma-imap-ssl').checked = true;
+  $('#ma-smtp-ssl').checked = true;
+  $('#ma-error').hidden = true;
+  openSheet($('#mailaccount-sheet'));
+}
+
+function startMailPoll() {
+  stopMailPoll();
+  mailTimer = setInterval(updateMailBadge, 60000); // 每 60 秒轮询未读
+}
+function stopMailPoll() { if (mailTimer) { clearInterval(mailTimer); mailTimer = null; } }
+async function updateMailBadge() {
+  try {
+    const data = await api('/api/mail/poll');
+    let totalUnseen = 0;
+    for (const a of data.accounts || []) totalUnseen += (a.unseen || 0);
+    const badge = $('#mail-nav-badge');
+    if (totalUnseen > 0) {
+      badge.textContent = totalUnseen > 99 ? '99+' : totalUnseen;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  } catch (e) { /* 静默失败 */ }
 }
 
 async function enterDashboard() {
