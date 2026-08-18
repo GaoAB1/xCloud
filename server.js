@@ -823,8 +823,14 @@ function serveStatic(req, res, pathname) {
   fs.readFile(filePath, (err, data) => {
     if (err) return sendError(res, 404, '未找到');
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': data.length });
-    res.end(data);
+    let out = data;
+    // 编辑页：注入 OnlyOffice 地址 → 浏览器可在请求 config 的同时并行预下载 api.js，加速编辑器加载
+    if (pathname === '/edit.html') {
+      const safe = String(ONLYOFFICE_URL || '').replace(/</g, '\\u003c');
+      out = Buffer.from(data.toString('utf8').replace('window.__OO_URL__ = "";', `window.__OO_URL__ = ${JSON.stringify(safe)};`), 'utf8');
+    }
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': out.length });
+    res.end(out);
   });
 }
 
