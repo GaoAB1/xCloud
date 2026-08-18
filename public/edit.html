@@ -9,9 +9,18 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #fff; }
-    #placeholder { position: absolute; inset: 0; }
+    /* 编辑器挂载容器：显式四边 + 视口尺寸，避免 inset 简写兼容性问题导致容器 0 尺寸 */
+    #placeholder {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+    }
     #loading, #error {
-      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
       flex-direction: column; gap: 12px; color: #6e6e73; font-size: 15px; background: #fff;
     }
     #error { color: #ff3b30; padding: 0 24px; text-align: center; line-height: 1.6; }

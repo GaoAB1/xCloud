@@ -300,11 +300,25 @@ function parentPath(rel) {
   return idx <= 0 ? '/' : clean.slice(0, idx);
 }
 
+// 修复 busboy 可能将 UTF-8 中文文件名误按 latin1 解码的乱码（双保险）
+function decodeFilename(name) {
+  if (!name) return '';
+  // 特征：文件名中出现大量 0x80-0xFF 的拉丁扩展字符（UTF-8 被 latin1 误解码的典型乱码）
+  if (/[\u0080-\u00FF]/.test(name)) {
+    try {
+      const fixed = Buffer.from(name, 'latin1').toString('utf8');
+      // 还原后无替换字符且含 CJK 字符才采纳，避免破坏本合法的拉丁文件名
+      if (!fixed.includes('\uFFFD') && /[\u4e00-\u9fff]/.test(fixed)) return fixed;
+    } catch { /* 保留原名 */ }
+  }
+  return name;
+}
+
 // multipart 上传（busboy）
 function handleUpload(req) {
   return new Promise((resolve) => {
     if (!Busboy) return resolve({ error: '服务器未安装 busboy，无法上传' });
-    const bb = Busboy({ headers: req.headers, limits: { files: 1, fileSize: MAX_UPLOAD } });
+    const bb = Busboy({ headers: req.headers, limits: { files: 1, fileSize: MAX_UPLOAD }, defParamCharset: 'utf8' });
     let targetDir = '';
     let finalPath = null;
     let error = null;
@@ -318,7 +332,7 @@ function handleUpload(req) {
     bb.on('file', (name, file, info) => {
       sawFile = true;
       const dir = resolveFilePath(targetDir);
-      const fname = path.basename(String(info.filename || ''));
+      const fname = path.basename(decodeFilename(String(info.filename || '')));
       if (!dir || !fname) { file.resume(); error = '路径无效或文件名为空'; return; }
       finalPath = uniqueFilePath(path.join(dir, fname));
       const ws = fs.createWriteStream(finalPath);
@@ -697,6 +711,11 @@ async function handleAPI(req, res, pathname, url) {
   }
 
   // ═══ OnlyOffice config ═══
+  // 关键修复（参照 Nextcloud 集成做法）：
+  //   document.url / callbackUrl 是 OnlyOffice 服务器（容器内）去访问的，
+  //   必须用 OnlyOffice 容器能解析到的面板地址（PANEL_URL / 内网地址），
+  //   而非浏览器看到的公网域名。否则容器内拉取文档失败 → 白屏。
+  //   ONLYOFFICE_URL 仅用于浏览器加载 api.js。
   if (pathname === '/api/onlyoffice/config' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
     const rel = String(body.path || '');
@@ -707,28 +726,39 @@ async function handleAPI(req, res, pathname, url) {
     const ext = extOf(name);
     const docType = EDITABLE[ext];
     if (!docType) return sendError(res, 400, '该文件类型不支持在线编辑');
-    const base = panelBaseUrl(req);
+
+    // OnlyOffice 服务器访问面板用的基地址（服务间通信）
+    const srvBase = PANEL_URL || panelBaseUrl(req);
     const key = crypto.createHash('md5').update(rel + ':' + st.mtimeMs).digest('hex');
     const rawToken = signJWT({ path: rel, exp: Date.now() + 3600 * 1000 });
     const cbToken = signJWT({ path: rel, exp: Date.now() + 24 * 3600 * 1000 });
+
+    const docUrl = `${srvBase}/api/files/raw?path=${encodeURIComponent(rel)}&token=${rawToken}`;
+    const cbUrl = `${srvBase}/api/onlyoffice/callback?path=${encodeURIComponent(rel)}&token=${cbToken}`;
+
     const config = {
       documentType: docType,
       document: {
         fileType: ext,
         key,
         title: name,
-        url: `${base}/api/files/raw?path=${encodeURIComponent(rel)}&token=${rawToken}`,
+        url: docUrl,
+        permissions: { edit: true, download: true, print: true, review: true, comment: true },
       },
       editorConfig: {
         lang: 'zh-CN',
         mode: 'edit',
-        callbackUrl: `${base}/api/onlyoffice/callback?path=${encodeURIComponent(rel)}&token=${cbToken}`,
+        callbackUrl: cbUrl,
         user: { id: me.id, name: me.name || me.username },
-        customization: { autosave: true, compactHeader: true, forcesave: false },
+        customization: { autosave: true, compactHeader: true, forcesave: true },
       },
+      type: 'desktop',
     };
+    // 整个 config 用 JWT 签名（OnlyOffice 浏览器侧和服务端共用同一密钥校验）
     config.token = signJWT(config);
-    return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, config });
+    const probe = await fetchWithTimeout((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', 2500).catch(() => 'false');
+    const onlyofficeUp = probe === true || probe === 'true' || !!probe;
+    return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, onlyofficeUp, config });
   }
 
   return sendError(res, 404, '接口不存在');
