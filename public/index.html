@@ -65,7 +65,7 @@
       </div>
     </section>
 
-    <!-- ════════════ 玻璃导航（主页 / 文件 共享） ════════════ -->
+    <!-- ════════════ 玻璃导航（主页 / 文件 / 邮件） ════════════ -->
     <header class="glass-nav" id="navbar" hidden>
       <div class="nav-inner">
         <div class="nav-brand">
@@ -75,6 +75,10 @@
         <div class="nav-tabs" id="nav-tabs" role="tablist">
           <button data-view="home" role="tab">主页</button>
           <button data-view="files" role="tab">文件</button>
+          <button data-view="mail" role="tab" id="nav-mail-tab">
+            邮件
+            <span class="nav-badge" id="mail-nav-badge" hidden></span>
+          </button>
         </div>
         <div class="nav-right">
           <div class="seg" id="network-seg" role="tablist" aria-label="网络切换">
@@ -148,6 +152,38 @@
         </div>
         <div class="empty" id="files-empty" hidden>此文件夹为空，点击右上角「上传」添加文件。</div>
         <div class="drop-hint" id="drop-hint" hidden>松开鼠标以上传文件</div>
+      </main>
+    </section>
+
+    <!-- ════════════ 邮件 ════════════ -->
+    <section id="view-mail" class="view" hidden>
+      <main class="container mail-container">
+        <div class="mail-layout">
+          <!-- 左侧：账户 + 文件夹 -->
+          <aside class="mail-side">
+            <div class="mail-accounts" id="mail-accounts"></div>
+            <nav class="mail-folders" id="mail-folders"></nav>
+          </aside>
+          <!-- 中间：邮件列表 -->
+          <section class="mail-list-pane">
+            <div class="mail-list-head">
+              <span class="mail-folder-title" id="mail-folder-title">收件箱</span>
+              <div class="mail-list-actions">
+                <button class="btn-ghost btn-sm" id="btn-mail-refresh" title="刷新">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+                <button class="btn-primary btn-sm" id="btn-mail-compose">写邮件</button>
+              </div>
+            </div>
+            <div class="mail-list" id="mail-list"></div>
+            <div class="empty" id="mail-empty" hidden>暂无邮件</div>
+            <div class="mail-loading" id="mail-loading" hidden>正在加载邮件…</div>
+          </section>
+          <!-- 右侧：阅读面板 -->
+          <section class="mail-read-pane" id="mail-read-pane">
+            <div class="mail-read-empty">选择一封邮件查看内容</div>
+          </section>
+        </div>
       </main>
     </section>
   </div>
@@ -282,6 +318,110 @@
       <div class="sheet-actions left">
         <button class="btn-danger" id="btn-logout">退出登录</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 写邮件 sheet -->
+  <div class="sheet sheet-lg" id="compose-sheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <h3>写邮件</h3>
+      <button class="icon-btn close-btn" data-close aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="sheet-body">
+      <form id="compose-form" novalidate>
+        <div class="field">
+          <span>发件账户</span>
+          <select id="compose-account"></select>
+        </div>
+        <div class="field">
+          <span>收件人</span>
+          <input type="text" id="compose-to" placeholder="多个收件人用逗号分隔" required />
+        </div>
+        <div class="field-row">
+          <div class="field grow">
+            <span>抄送</span>
+            <input type="text" id="compose-cc" placeholder="可选" />
+          </div>
+          <div class="field grow">
+            <span>密送</span>
+            <input type="text" id="compose-bcc" placeholder="可选" />
+          </div>
+        </div>
+        <div class="field">
+          <span>主题</span>
+          <input type="text" id="compose-subject" placeholder="邮件主题" maxlength="200" />
+        </div>
+        <div class="field">
+          <span>正文</span>
+          <textarea id="compose-body" rows="10" placeholder="邮件正文…"></textarea>
+        </div>
+        <div class="field" id="compose-attachments"></div>
+        <div class="field">
+          <button type="button" class="btn-secondary btn-sm" id="btn-add-attachment">添加附件</button>
+          <input type="file" id="compose-file" multiple hidden />
+        </div>
+        <p class="field-error" id="compose-error" hidden></p>
+        <div class="sheet-actions">
+          <button type="button" class="btn-secondary" data-close>取消</button>
+          <button type="submit" class="btn-primary" id="btn-send-mail">发送</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 邮件账户管理 sheet -->
+  <div class="sheet sheet-lg" id="mailaccount-sheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <h3>邮件账户</h3>
+      <button class="icon-btn close-btn" data-close aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="sheet-body">
+      <div id="mailaccount-list"></div>
+      <div class="divider"></div>
+      <form id="mailaccount-form" novalidate>
+        <h4>添加账户</h4>
+        <p class="field-hint">支持 QQ / 163 / Gmail / Outlook / 企业邮箱等（使用邮箱授权码而非登录密码）。</p>
+        <div class="field">
+          <span>显示名称</span>
+          <input type="text" id="ma-name" placeholder="例如 工作邮箱" maxlength="32" />
+        </div>
+        <div class="field">
+          <span>邮箱地址</span>
+          <input type="email" id="ma-email" placeholder="you@example.com" required />
+        </div>
+        <div class="field">
+          <span>邮箱授权码 / 密码</span>
+          <input type="password" id="ma-password" placeholder="IMAP/SMTP 授权码" required />
+        </div>
+        <div class="field-row">
+          <div class="field grow">
+            <span>IMAP 服务器</span>
+            <input type="text" id="ma-imap" placeholder="imap.qq.com" required />
+          </div>
+          <div class="field grow">
+            <span>SMTP 服务器</span>
+            <input type="text" id="ma-smtp" placeholder="smtp.qq.com" required />
+          </div>
+        </div>
+        <div class="field-row">
+          <label class="check"><input type="checkbox" id="ma-imap-ssl" checked /> IMAP 使用 SSL（端口 993）</label>
+          <label class="check"><input type="checkbox" id="ma-smtp-ssl" checked /> SMTP 使用 SSL（端口 465）</label>
+        </div>
+        <div class="field">
+          <span>常见配置</span>
+          <select id="ma-preset" onchange="applyMailPreset()">
+            <option value="">手动输入</option>
+            <option value="qq">QQ 邮箱</option>
+            <option value="163">163 邮箱</option>
+            <option value="gmail">Gmail</option>
+            <option value="outlook">Outlook / Hotmail</option>
+          </select>
+        </div>
+        <p class="field-error" id="ma-error" hidden></p>
+        <div class="sheet-actions">
+          <button type="submit" class="btn-primary">保存账户</button>
+        </div>
+      </form>
     </div>
   </div>
 
