@@ -711,6 +711,11 @@ async function handleAPI(req, res, pathname, url) {
   }
 
   // ═══ OnlyOffice config ═══
+  // 关键修复（参照 Nextcloud 集成做法）：
+  //   document.url / callbackUrl 是 OnlyOffice 服务器（容器内）去访问的，
+  //   必须用 OnlyOffice 容器能解析到的面板地址（PANEL_URL / 内网地址），
+  //   而非浏览器看到的公网域名。否则容器内拉取文档失败 → 白屏。
+  //   ONLYOFFICE_URL 仅用于浏览器加载 api.js。
   if (pathname === '/api/onlyoffice/config' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
     const rel = String(body.path || '');
@@ -721,33 +726,38 @@ async function handleAPI(req, res, pathname, url) {
     const ext = extOf(name);
     const docType = EDITABLE[ext];
     if (!docType) return sendError(res, 400, '该文件类型不支持在线编辑');
-    const base = panelBaseUrl(req);
+
+    // OnlyOffice 服务器访问面板用的基地址（服务间通信）
+    const srvBase = PANEL_URL || panelBaseUrl(req);
     const key = crypto.createHash('md5').update(rel + ':' + st.mtimeMs).digest('hex');
     const rawToken = signJWT({ path: rel, exp: Date.now() + 3600 * 1000 });
     const cbToken = signJWT({ path: rel, exp: Date.now() + 24 * 3600 * 1000 });
+
+    const docUrl = `${srvBase}/api/files/raw?path=${encodeURIComponent(rel)}&token=${rawToken}`;
+    const cbUrl = `${srvBase}/api/onlyoffice/callback?path=${encodeURIComponent(rel)}&token=${cbToken}`;
+
     const config = {
       documentType: docType,
       document: {
         fileType: ext,
         key,
         title: name,
-        url: `${base}/api/files/raw?path=${encodeURIComponent(rel)}&token=${rawToken}`,
+        url: docUrl,
+        permissions: { edit: true, download: true, print: true, review: true, comment: true },
       },
       editorConfig: {
         lang: 'zh-CN',
         mode: 'edit',
-        callbackUrl: `${base}/api/onlyoffice/callback?path=${encodeURIComponent(rel)}&token=${cbToken}`,
+        callbackUrl: cbUrl,
         user: { id: me.id, name: me.name || me.username },
-        customization: { autosave: true, compactHeader: true, forcesave: false },
+        customization: { autosave: true, compactHeader: true, forcesave: true },
       },
+      type: 'desktop',
     };
+    // 整个 config 用 JWT 签名（OnlyOffice 浏览器侧和服务端共用同一密钥校验）
     config.token = signJWT(config);
-    // 预检 OnlyOffice 服务是否可达（healthcheck 接口），供前端给出清晰提示
-    let onlyofficeUp = false;
-    try {
-      const probe = await fetchWithTimeout((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', 2500);
-      onlyofficeUp = probe === true || probe === 'true' || !!probe;
-    } catch { /* 不可达 */ }
+    const probe = await fetchWithTimeout((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', 2500).catch(() => 'false');
+    const onlyofficeUp = probe === true || probe === 'true' || !!probe;
     return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, onlyofficeUp, config });
   }
 
