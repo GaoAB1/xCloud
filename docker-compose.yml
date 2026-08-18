@@ -10,13 +10,14 @@ services:
       - ./data:/app/data
     environment:
       - PORT=3000
-      # 浏览器访问 OnlyOffice 的地址（内网填 NAS IP，公网填域名，如 http://office.soulan.top）
+      # 浏览器加载 OnlyOffice api.js 用的地址（公网 https://office.soulan.top，内网 http://NAS_IP:8080）
       - ONLYOFFICE_URL=${ONLYOFFICE_URL:-http://localhost:8080}
-      # 面板(容器内)访问 OnlyOffice 的地址（服务名:容器端口 80，保持内网）
+      # 面板容器 → OnlyOffice 容器的内部地址（Docker 网络，固定容器名 + 容器端口 80）
       - ONLYOFFICE_INTERNAL_URL=http://onlyoffice
-      # OnlyOffice(容器内)访问面板的地址，用于下载文档与保存回调（保持内网）
+      # OnlyOffice 容器 → 面板容器的内部地址（OnlyOffice 拉取文档 & 发送保存回调用）
+      # 默认 Docker 容器名；切勿填公网域名——OnlyOffice 容器内无法解析外部域名
       - PANEL_URL=${PANEL_URL:-http://xcloud:3000}
-      # JWT 密钥：面板与 OnlyOffice 必须使用同一个值（建议在 .env 中统一设置）
+      # JWT 密钥：面板与 OnlyOffice 必须完全一致（建议在 .env 中设置）
       - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-string}
     depends_on:
       - onlyoffice
@@ -28,9 +29,15 @@ services:
     ports:
       - "8080:80"
     environment:
-      # 开启 OnlyOffice JWT，并与面板共享同一密钥（JWT_SECRET 必须与 xcloud 完全一致）
       - JWT_ENABLED=true
       - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-string}
+      # 4G 内存小机器优化：限制 OnlyOffice 最大内存，防止撑爆宿主导致 swap 抖动
+      # JVM 堆上限调低（默认约 1/4 物理内存），同时为转换进程预留空间
+      - JAVA_OPTS=${JAVA_OPTS:--Xms512m -Xmx1024m}
+      # 关闭自动更新检查，减少后台定时任务抢占资源
+      - ENABLE_UPDATE_CHECK=false
+    # 4G 内存机器建议：给 OnlyOffice 分配 2.5G 上限，给面板和系统留余量
+    mem_limit: ${ONLYOFFICE_MEM_LIMIT:-2560m}
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_log:/var/log/onlyoffice
