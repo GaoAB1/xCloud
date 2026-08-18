@@ -23,6 +23,9 @@
       display: flex; align-items: center; justify-content: center;
       flex-direction: column; gap: 12px; color: #6e6e73; font-size: 15px; background: #fff;
     }
+    /* 关键修复：display:flex 会覆盖 hidden 属性的 display:none，
+       必须显式声明 [hidden] 才能让加载遮罩真正隐藏，否则白色遮罩永远盖住编辑器 */
+    #loading[hidden], #error[hidden] { display: none; }
     #error { color: #ff3b30; padding: 0 24px; text-align: center; line-height: 1.6; }
     .spin {
       width: 28px; height: 28px; border-radius: 50%;
