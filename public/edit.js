@@ -5,10 +5,19 @@ const params = new URLSearchParams(location.search);
 const filePath = params.get('path') || '';
 
 function showError(msg) {
-  document.getElementById('loading').hidden = true;
+  hideLoading();
   const e = document.getElementById('error');
   e.innerHTML = msg;
   e.hidden = false;
+}
+
+// 隐藏加载遮罩：同时设置 hidden 属性 + 内联 display:none，
+// 避免 CSS display:flex 覆盖 hidden 导致白色遮罩残留（白屏根因之一）
+function hideLoading() {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.hidden = true;
+  el.style.display = 'none';
 }
 
 const DEPLOY_HINT =
@@ -20,10 +29,13 @@ function loadEditor(ooUrl, config) {
   const script = document.createElement('script');
   script.src = ooUrl.replace(/\/+$/, '') + '/web-apps/apps/api/documents/api.js';
   script.onload = () => {
-    document.getElementById('loading').hidden = true;
     // 注入事件回调：将 OnlyOffice 内部错误暴露到 UI，避免静默白屏无法排查
     config.events = {
-      onAppReady: function () { console.log('[OnlyOffice] app ready'); },
+      // 编辑器 UI 真正就绪后再隐藏加载遮罩（onAppReady 触发即代表 iframe 已渲染出界面）
+      onAppReady: function () {
+        console.log('[OnlyOffice] app ready');
+        hideLoading();
+      },
       onDocumentReady: function () { console.log('[OnlyOffice] document ready'); },
       onError: function (event) {
         console.error('[OnlyOffice] editor error', event);
@@ -46,7 +58,7 @@ function loadEditor(ooUrl, config) {
 }
 
 function escapeHTML(s) {
-  return String(s == null ? '' : s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 async function init() {
