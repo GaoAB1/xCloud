@@ -21,7 +21,22 @@ function loadEditor(ooUrl, config) {
   script.src = ooUrl.replace(/\/+$/, '') + '/web-apps/apps/api/documents/api.js';
   script.onload = () => {
     document.getElementById('loading').hidden = true;
-    new window.DocsAPI.DocEditor('placeholder', config);
+    // 注入事件回调：将 OnlyOffice 内部错误暴露到 UI，避免静默白屏无法排查
+    config.events = {
+      onAppReady: function () { console.log('[OnlyOffice] app ready'); },
+      onDocumentReady: function () { console.log('[OnlyOffice] document ready'); },
+      onError: function (event) {
+        console.error('[OnlyOffice] editor error', event);
+        var desc = (event && event.data && (event.data.description || event.data.error || JSON.stringify(event.data))) || '未知错误';
+        showError('OnlyOffice 编辑器错误：<br>' + escapeHTML(String(desc)) + '<br><br>' + DEPLOY_HINT + '<br><a href="javascript:history.back()">返回</a>');
+      },
+      onWarning: function (event) { console.warn('[OnlyOffice] warning', event); },
+    };
+    try {
+      new window.DocsAPI.DocEditor('placeholder', config);
+    } catch (e) {
+      showError('编辑器初始化异常：' + escapeHTML(e.message) + '<br><a href="javascript:history.back()">返回</a>');
+    }
   };
   script.onerror = () =>
     showError(
@@ -31,7 +46,7 @@ function loadEditor(ooUrl, config) {
 }
 
 function escapeHTML(s) {
-  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s == null ? '' : s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
 }
 
 async function init() {
