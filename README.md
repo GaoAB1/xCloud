@@ -18,6 +18,7 @@
 ├── package.json           # 依赖：busboy（multipart 上传）
 ├── Dockerfile             # 面板镜像
 ├── docker-compose.yml     # 面板 + OnlyOffice 双服务
+├── deploy/                # 部署辅助（Nginx 反代性能优化配置等）
 ├── .github/workflows/     # 自动构建镜像推送到 GHCR
 ├── public/
 │   ├── index.html         # 现代单页应用（主页 + 文件）
@@ -67,6 +68,25 @@ docker compose up -d
 | `ONLYOFFICE_INTERNAL_URL` | **面板(容器)**访问 OnlyOffice 的地址 | `http://onlyoffice` |
 | `PANEL_URL` | **OnlyOffice(容器)**访问面板的地址（下载/回调） | `http://xcloud:3000` |
 | `JWT_SECRET` | 保护文档下载与保存回调的密钥，务必修改 | 随机长字符串 |
+| `ONLYOFFICE_MEM_LIMIT` | OnlyOffice 容器内存上限（4G 机器建议 `2560m`） | `2560m` |
+| `JAVA_OPTS` | OnlyOffice JVM 堆参数（小内存机器调低） | `-Xms512m -Xmx1024m` |
+
+## 性能优化（加载慢时）
+
+服务器负载不高但打开文档慢，瓶颈通常不在 CPU/内存，而是**前端静态资源传输**。OnlyOffice 编辑器首次加载需下载几十 MB 的 JS/CSS，以下优化可显著提速：
+
+1. **Nginx 反代开启 gzip + 静态缓存（收益最大，减少 70-80% 传输量）**
+   项目提供现成配置：`deploy/nginx-onlyoffice.conf`，包含 gzip 压缩、版本化资源 30 天长缓存（二次打开秒开）、HTTP/2、WebSocket 转发。将其中 `server_name` 改为你的域名后放入 `/etc/nginx/conf.d/` 并 `nginx -s reload`。
+
+2. **前端并行预加载（已内置）**
+   面板在编辑页 HTML 中注入 OnlyOffice 地址，页面加载时立即并行预下载 `api.js` 并建立 `preconnect`，不再等待 config 接口返回后才开始下载，减少 1-2 个网络往返。
+
+3. **限制容器内存防 swap 抖动（已内置）**
+   `docker-compose.yml` 已为 onlyoffice 服务添加 `mem_limit`（默认 2.5G，可用 `ONLYOFFICE_MEM_LIMIT` 覆盖）和 `JAVA_OPTS`（默认堆上限 1G），避免 4G 内存机器上内存溢出触发 swap 导致卡顿。
+
+4. **检查网络链路**
+   - 公网访问带宽较小（如家宽上行 10-30Mbps）时，gzip 压缩收益尤其明显。
+   - 确认浏览器 DevTools → Network 中 `web-apps` 资源返回 `Content-Encoding: gzip` 且命中缓存（`200 (from disk cache)`）。
 
 ### 直接使用镜像（GitHub Actions 已构建到 GHCR）
 
