@@ -1,12 +1,13 @@
 # xCloud · 个人云盘 + 应用面板
 
-苹果风简约设计的个人云盘与 NAS 服务聚合面板。一个页面内流转：**主页（时钟/天气/应用）↔ 文件（网盘）**，并内置 OnlyOffice 在线编辑 Word/PPT/Excel。
+苹果风简约设计的个人云盘与 NAS 服务聚合面板。一个页面内流转：**主页（时钟/天气/应用）↔ 文件（网盘）↔ 邮件**，并内置 OnlyOffice 在线编辑 Word/PPT/Excel。
 
 ## 功能
 
 - **主页**：实时时钟 + 天气（Open-Meteo 免 Key）+ 自定义应用图标（内网/外网双地址一键切换）。
 - **网盘**：文件浏览（面包屑导航）、上传（含拖拽）、下载、新建文件夹、重命名、删除；iCloud 网页端风格。
 - **在线编辑**：集成 OnlyOffice Document Server，可直接编辑并回存 Word / PPT / Excel。
+- **邮件**：IMAP 收件 + SMTP 发件，兼容 QQ / 163 / Gmail / Outlook / 企业邮箱；支持收件箱/垃圾邮件/已发送/回收站等文件夹、未读徽标、回复、标记垃圾、删除、附件下载、带附件写信。
 - **登录保护**：首次启动引导创建管理员账户，scrypt 哈希 + HttpOnly 会话；可改头像/名称/密码。
 - **IE 兼容**：自动识别 IE 内核（Trident/MSIE），切换到精简版网盘页，支持登录 / 浏览 / 上传 / 下载（ES5 + 传统表单，无需现代浏览器）。
 - **Docker 部署**：一条 `docker compose up` 启动面板 + OnlyOffice 双服务。
@@ -14,19 +15,19 @@
 ## 目录结构
 
 ```
-├── server.js              # 后端（认证/应用/天气/网盘文件系统/OnlyOffice 集成）
-├── package.json           # 依赖：busboy（multipart 上传）
+├── server.js              # 后端（认证/应用/天气/网盘文件系统/OnlyOffice 集成/邮件）
+├── package.json           # 依赖：busboy + imapflow + nodemailer + mailparser
 ├── Dockerfile             # 面板镜像
 ├── docker-compose.yml     # 面板 + OnlyOffice 双服务
 ├── deploy/                # 部署辅助（Nginx 反代性能优化配置等）
 ├── .github/workflows/     # 自动构建镜像推送到 GHCR
 ├── public/
-│   ├── index.html         # 现代单页应用（主页 + 文件）
+│   ├── index.html         # 现代单页应用（主页 + 文件 + 邮件）
 │   ├── styles.css         # 苹果「液态玻璃」样式
 │   ├── app.js             # 前端逻辑
 │   ├── edit.html / edit.js  # OnlyOffice 在线编辑器页
 │   └── classic.html / classic.js / classic.css  # IE 兼容精简页
-└── data/                  # 运行时数据（用户/应用/会话 + 网盘文件 files/）
+└── data/                  # 运行时数据（用户/应用/会话 + 网盘文件 files/ + 邮件账户 mailaccounts.json）
 ```
 
 ## 快速开始（本地）
@@ -70,6 +71,32 @@ docker compose up -d
 | `JWT_SECRET` | 保护文档下载与保存回调的密钥，务必修改 | 随机长字符串 |
 | `ONLYOFFICE_MEM_LIMIT` | OnlyOffice 容器内存上限（4G 机器建议 `2560m`） | `2560m` |
 | `JAVA_OPTS` | OnlyOffice JVM 堆参数（小内存机器调低） | `-Xms512m -Xmx1024m` |
+
+## 邮件功能
+
+通过标准 **IMAP（收件）+ SMTP（发件）** 协议对接邮箱，市面主流平台（QQ / 163 / Gmail / Outlook / 企业微信邮箱等）均可使用。
+
+**使用步骤：**
+
+1. 登录面板 → 顶部导航切到「邮件」→ 点击左侧「＋ 添加账户」。
+2. 填写邮箱地址与**授权码**（QQ/163 等在邮箱设置里开启 IMAP/SMTP 后生成的授权码，不是登录密码）。
+3. 可从「常见配置」下拉选择预设服务器（QQ/163/Gmail/Outlook），或手动填写 IMAP/SMTP 服务器地址。
+4. 保存后即可查看收件箱、垃圾邮件、已发送等文件夹，支持：
+   - 未读邮件导航栏红点徽标（每 60 秒轮询）
+   - 回复、标记垃圾邮件、删除（移入回收站）
+   - 附件预览/下载
+   - 写信（支持多收件人、抄送、密送、附件）
+
+**各邮箱 IMAP/SMTP 服务器参考：**
+
+| 平台 | IMAP 服务器 | SMTP 服务器 |
+|---|---|---|
+| QQ 邮箱 | imap.qq.com | smtp.qq.com |
+| 163 邮箱 | imap.163.com | smtp.163.com |
+| Gmail | imap.gmail.com | smtp.gmail.com |
+| Outlook | outlook.office365.com | smtp.office365.com |
+
+> 注意：邮箱密码（授权码）明文保存在面板的 `data/mailaccounts.json` 中，请确保面板部署在可信环境且已启用登录保护。
 
 ## 性能优化（加载慢时）
 
