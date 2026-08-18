@@ -31,6 +31,13 @@ services:
     environment:
       - JWT_ENABLED=true
       - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-string}
+      # 4G 内存小机器优化：限制 OnlyOffice 最大内存，防止撑爆宿主导致 swap 抖动
+      # JVM 堆上限调低（默认约 1/4 物理内存），同时为转换进程预留空间
+      - JAVA_OPTS=${JAVA_OPTS:--Xms512m -Xmx1024m}
+      # 关闭自动更新检查，减少后台定时任务抢占资源
+      - ENABLE_UPDATE_CHECK=false
+    # 4G 内存机器建议：给 OnlyOffice 分配 2.5G 上限，给面板和系统留余量
+    mem_limit: ${ONLYOFFICE_MEM_LIMIT:-2560m}
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_log:/var/log/onlyoffice

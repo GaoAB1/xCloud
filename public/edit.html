@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#ffffff" />
   <title>在线编辑 · xCloud</title>
+  <!-- 服务器注入 OnlyOffice 地址，用于页面加载时立即并行预下载 api.js（提升加载速度） -->
+  <script>window.__OO_URL__ = "";</script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
