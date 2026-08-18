@@ -7,6 +7,7 @@
  * - 应用管理（内网/外网双地址）、头像上传、Open-Meteo 天气代理
  * - 网盘文件系统（浏览/上传/下载/建夹/重命名/移动/删除）
  * - OnlyOffice 在线编辑（JWT 签名 + callback 保存）
+ * - 邮件（IMAP 收件 / SMTP 发件）
  */
 
 const http = require('http');
@@ -16,6 +17,11 @@ const crypto = require('crypto');
 const os = require('os');
 let Busboy = null;
 try { Busboy = require('busboy'); } catch { /* multipart 上传将不可用 */ }
+// 邮件功能（IMAP 收件 / SMTP 发件 / 解析正文附件）
+let ImapFlow = null, nodemailer = null, simpleParser = null;
+try { ImapFlow = require('imapflow').ImapFlow; } catch { /* 邮件收件不可用 */ }
+try { nodemailer = require('nodemailer'); } catch { /* 邮件发件不可用 */ }
+try { simpleParser = require('mailparser').simpleParser; } catch { /* 邮件解析不可用 */ }
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -34,6 +40,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const APPS_FILE = path.join(DATA_DIR, 'apps.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const MAIL_FILE = path.join(DATA_DIR, 'mailaccounts.json'); // 邮件账户配置
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 const MAX_BODY = 8 * 1024 * 1024; // JSON 请求体上限（头像/回调等）
@@ -60,6 +67,7 @@ let settings = Object.assign(
   { location: '北京', lat: 39.9042, lon: 116.4074, weatherUnit: 'c' },
   readJSON(SETTINGS_FILE, {})
 );
+let mailAccounts = readJSON(MAIL_FILE, { accounts: [] }); // 邮件账户
 
 // 会话：内存 Map + 落盘，重启不丢登录
 const sessions = new Map();
@@ -453,6 +461,388 @@ async function handleCallback(req, res, url) {
   return sendJSON(res, 200, { error: 0 });
 }
 
+// ════════════════════════════════════════════════════════════════
+//  邮件模块（IMAP 收件 / SMTP 发件）
+//  兼容主流邮箱：QQ / 163 / Gmail / Outlook / 企业邮箱（标准 IMAP+SMTP）
+// ════════════════════════════════════════════════════════════════
+const MAIL = { client: null, pollTimer: null, lastUids: new Map() };
+
+function mailEnabled() { return !!(ImapFlow && nodemailer && simpleParser); }
+function mailAccSafe(a) {
+  return { id: a.id, name: a.name, email: a.email, imapHost: a.imapHost, imapPort: a.imapPort, imapSecure: !!a.imapSecure, smtpHost: a.smtpHost, smtpPort: a.smtpPort, smtpSecure: !!a.smtpSecure };
+}
+function mailFind(id) { return mailAccounts.accounts.find((a) => a.id === id) || null; }
+
+// 解析 IMAP 服务器地址，支持 "imap.qq.com:993" 或 "imap.qq.com"
+function parseHostPort(s, defPort) {
+  const str = String(s || '').trim();
+  if (!str) return null;
+  const m = str.match(/^(.*?)(?::(\d+))?$/);
+  return { host: m[1], port: m[2] ? Number(m[2]) : defPort };
+}
+
+function buildImapClient(acc, opts) {
+  const hp = parseHostPort(acc.imapHost, acc.imapSecure ? 993 : 143);
+  return new ImapFlow({
+    host: hp.host,
+    port: hp.port,
+    secure: !!acc.imapSecure,
+    auth: { user: acc.email, pass: acc.password },
+    logger: false,
+    ...(opts || {}),
+  });
+}
+
+// 测试连接（IMAP + SMTP），供新增账户时校验
+async function mailTest(acc) {
+  const out = { imap: false, smtp: false, error: '' };
+  try {
+    const c = buildImapClient(acc, { verifyOnly: true });
+    await c.connect();
+    await c.logout();
+    out.imap = true;
+  } catch (e) { out.error = 'IMAP: ' + (e.message || e); }
+  try {
+    const hp = parseHostPort(acc.smtpHost, acc.smtpSecure ? 465 : 587);
+    const t = nodemailer.createTransport({
+      host: hp.host, port: hp.port,
+      secure: !!acc.smtpSecure,
+      auth: { user: acc.email, pass: acc.password },
+    });
+    await t.verify();
+    out.smtp = true;
+  } catch (e) { out.error = (out.error ? out.error + '；' : '') + 'SMTP: ' + (e.message || e); }
+  return out;
+}
+
+// 列出文件夹（含垃圾邮件 Junk/Spam）
+async function mailFolders(acc) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const list = await c.list();
+    const SPECIAL = { junk: [], trash: [], sent: [], draft: [] };
+    const folders = list
+      .filter((f) => !f.flags.includes('\\Noselect'))
+      .map((f) => {
+        const lower = f.path.toLowerCase();
+        if (lower.includes('junk') || lower.includes('spam') || lower.includes('垃圾')) SPECIAL.junk.push(f.path);
+        if (lower.includes('trash') || lower.includes('deleted') || lower.includes('已删除') || lower.includes('回收站')) SPECIAL.trash.push(f.path);
+        if (lower.includes('sent') || lower.includes('已发送')) SPECIAL.sent.push(f.path);
+        if (lower.includes('draft') || lower.includes('草稿')) SPECIAL.draft.push(f.path);
+        return { path: f.path, delimiter: f.delimiter, flags: f.flags, name: f.name };
+      });
+    // 确保收件箱在第一个
+    folders.sort((a, b) => {
+      const rank = (p) => (p.toLowerCase() === 'inbox' ? 0 : 1);
+      return rank(a.path) - rank(b.path);
+    });
+    return { folders, special: SPECIAL };
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+// 读取某文件夹邮件列表（envelope，不含正文，快）
+async function mailList(acc, folder, range) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const lock = await c.getMailboxLock(folder || 'INBOX');
+    try {
+      const from = range.from || 1;
+      const to = range.to || from + 49;
+      const total = c.mailbox.exists;
+      const seq = `${Math.min(from, total)}:*`; // 最近 50 封
+      const items = [];
+      let uidNext = c.mailbox.uidNext;
+      for await (const m of c.fetch(seq, { envelope: true, flags: true, uid: true }, { uid: false, changedSince: 0 })) {
+        const env = m.envelope || {};
+        items.push({
+          uid: m.uid,
+          seq: m.seq,
+          flags: m.flags || [],
+          seen: (m.flags || []).includes('\\Seen'),
+          subject: env.subject || '(无主题)',
+          fromName: env.from && env.from[0] ? (env.from[0].name || env.from[0].address || '') : '',
+          fromAddr: env.from && env.from[0] ? env.from[0].address || '' : '',
+          date: env.date ? env.date.getTime() : 0,
+          size: m.size || 0,
+        });
+      }
+      items.sort((a, b) => b.uid - a.uid);
+      return { total, uidNext, items: items.slice(0, to - from + 1) };
+    } finally { lock.release(); }
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+// 读取单封邮件全文（解析正文/附件）
+async function mailRead(acc, folder, uid) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const lock = await c.getMailboxLock(folder || 'INBOX');
+    try {
+      const msg = await c.fetchOne(uid, { source: true, envelope: true, flags: true }, { uid: true });
+      if (!msg) return null;
+      const parsed = await simpleParser(msg.source);
+      // 标记已读
+      if (!(msg.flags || []).includes('\\Seen')) {
+        try { await c.messageFlagsAdd(uid, ['\\Seen'], { uid: true }); } catch { /* ignore */ }
+      }
+      return {
+        uid,
+        flags: msg.flags || [],
+        subject: parsed.subject || '(无主题)',
+        from: parsed.from ? { name: parsed.from.name || '', address: parsed.from.address || '' } : null,
+        to: (parsed.to && parsed.to.map((x) => ({ name: x.name || '', address: x.address || '' }))) || [],
+        cc: (parsed.cc && parsed.cc.map((x) => ({ name: x.name || '', address: x.address || '' }))) || [],
+        date: parsed.date ? parsed.date.getTime() : 0,
+        text: parsed.text || '',
+        html: parsed.html || '',
+        attachments: (parsed.attachments || []).map((a) => ({
+          filename: a.filename || '附件', contentType: a.contentType || '', size: a.size || 0,
+        })),
+      };
+    } finally { lock.release(); }
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+// 下载附件（base64 返回）
+async function mailAttachment(acc, folder, uid, idx) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const lock = await c.getMailboxLock(folder || 'INBOX');
+    try {
+      const msg = await c.fetchOne(uid, { source: true }, { uid: true });
+      if (!msg) return null;
+      const parsed = await simpleParser(msg.source);
+      const att = (parsed.attachments || [])[Number(idx) || 0];
+      if (!att) return null;
+      return { filename: att.filename || 'attachment', contentType: att.contentType || 'application/octet-stream', content: att.content.toString('base64'), size: att.size || 0 };
+    } finally { lock.release(); }
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+// 标记操作：已读/未读/删除（移入垃圾箱）
+async function mailFlag(acc, folder, uids, action) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const lock = await c.getMailboxLock(folder || 'INBOX');
+    try {
+      const set = { uid: uids };
+      if (action === 'seen') await c.messageFlagsAdd(set, ['\\Seen'], { uid: true });
+      else if (action === 'unseen') await c.messageFlagsRemove(set, ['\\Seen'], { uid: true });
+      else if (action === 'flagged') await c.messageFlagsAdd(set, ['\\Flagged'], { uid: true });
+      else if (action === 'unflagged') await c.messageFlagsRemove(set, ['\\Flagged'], { uid: true });
+      else if (action === 'delete') {
+        // 移动到垃圾箱（找不到则标记已删除）
+        const folders = await c.list();
+        const junk = folders.find((f) => /junk|spam|trash|deleted|垃圾|回收站/i.test(f.path)) || null;
+        if (junk) await c.messageMove(set, junk.path, { uid: true });
+        else await c.messageFlagsAdd(set, ['\\Deleted'], { uid: true });
+      } else if (action === 'spam') {
+        // 标记为垃圾邮件（移动到垃圾文件夹）
+        const folders = await c.list();
+        const spam = folders.find((f) => /junk|spam|垃圾/i.test(f.path)) || null;
+        if (spam) await c.messageMove(set, spam.path, { uid: true });
+        else await c.messageFlagsAdd(set, ['\\Flagged'], { uid: true });
+      }
+      return { ok: true };
+    } finally { lock.release(); }
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+// 发送邮件
+async function mailSend(acc, body) {
+  const hp = parseHostPort(acc.smtpHost, acc.smtpSecure ? 465 : 587);
+  const t = nodemailer.createTransport({
+    host: hp.host, port: hp.port,
+    secure: !!acc.smtpSecure,
+    auth: { user: acc.email, pass: acc.password },
+  });
+  const toList = String(body.to || '').split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
+  if (!toList.length) throw new Error('收件人不能为空');
+  const ccList = String(body.cc || '').split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
+  const bccList = String(body.bcc || '').split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
+  const mail = {
+    from: `"${acc.name || acc.email}" <${acc.email}>`,
+    to: toList,
+    subject: String(body.subject || '(无主题)'),
+    text: String(body.text || ''),
+  };
+  if (ccList.length) mail.cc = ccList;
+  if (bccList.length) mail.bcc = bccList;
+  if (body.html) mail.html = String(body.html);
+  if (Array.isArray(body.attachments)) {
+    mail.attachments = body.attachments.map((a) => ({
+      filename: a.filename || 'attachment',
+      content: Buffer.from(a.content || '', 'base64'),
+      contentType: a.contentType || 'application/octet-stream',
+    }));
+  }
+  const info = await t.sendMail(mail);
+  return { ok: true, messageId: info.messageId };
+}
+
+// 轮询新邮件：返回各账户收件箱未读数变化（供前端实时刷新）
+async function mailPoll(acc) {
+  const c = buildImapClient(acc);
+  await c.connect();
+  try {
+    const st = await c.status('INBOX', { unseen: true, messages: true, uidNext: true });
+    const prev = MAIL.lastUids.get(acc.id);
+    const uidNext = st.uidNext || 0;
+    const fresh = prev ? Math.max(0, uidNext - prev) : 0;
+    MAIL.lastUids.set(acc.id, uidNext);
+    return { unseen: st.unseen || 0, messages: st.messages || 0, fresh, uidNext };
+  } finally {
+    try { await c.logout(); } catch { /* ignore */ }
+  }
+}
+
+async function mailStatusAll() {
+  if (!mailEnabled()) return { enabled: false, accounts: [] };
+  const results = [];
+  for (const acc of mailAccounts.accounts) {
+    try { results.push({ id: acc.id, email: acc.email, ...(await mailPoll(acc)) }); }
+    catch (e) { results.push({ id: acc.id, email: acc.email, error: e.message || '连接失败' }); }
+  }
+  return { enabled: true, accounts: results };
+}
+
+// 邮件 API 路由（需登录）
+async function handleMailAPI(req, res, pathname, url, me) {
+  if (pathname === '/api/mail/enabled' && req.method === 'GET') {
+    return sendJSON(res, 200, { enabled: mailEnabled(), accounts: mailAccounts.accounts.map(mailAccSafe) });
+  }
+
+  // 账户管理
+  if (pathname === '/api/mail/accounts' && req.method === 'GET') {
+    return sendJSON(res, 200, { accounts: mailAccounts.accounts.map(mailAccSafe) });
+  }
+  if (pathname === '/api/mail/accounts' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const acc = {
+      id: uid(),
+      name: String(body.name || '').trim() || body.email,
+      email: String(body.email || '').trim(),
+      password: String(body.password || ''),
+      imapHost: String(body.imapHost || '').trim(),
+      imapPort: Number(body.imapPort) || 993,
+      imapSecure: body.imapSecure !== false,
+      smtpHost: String(body.smtpHost || '').trim(),
+      smtpPort: Number(body.smtpPort) || 465,
+      smtpSecure: body.smtpSecure !== false,
+      createdAt: Date.now(),
+    };
+    if (!acc.email || !acc.password || !acc.imapHost || !acc.smtpHost) return sendError(res, 400, '请填写完整的邮箱、密码、IMAP/SMTP 服务器');
+    // 可选项：测试连接
+    if (body.test === true) {
+      const r = await mailTest(acc);
+      if (!r.imap) return sendError(res, 400, 'IMAP 连接失败：' + r.error);
+      if (!r.smtp) return sendError(res, 400, 'SMTP 连接失败：' + r.error);
+    }
+    mailAccounts.accounts.push(acc);
+    writeJSON(MAIL_FILE, mailAccounts);
+    MAIL.lastUids.set(acc.id, 0);
+    return sendJSON(res, 200, mailAccSafe(acc));
+  }
+  const accMatch = pathname.match(/^\/api\/mail\/accounts\/([a-f0-9]+)$/);
+  if (accMatch && req.method === 'PUT') {
+    const acc = mailFind(accMatch[1]);
+    if (!acc) return sendError(res, 404, '账户不存在');
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    if (body.name !== undefined) acc.name = String(body.name || '').trim() || acc.email;
+    if (body.password !== undefined) acc.password = String(body.password || '');
+    if (body.imapHost !== undefined) acc.imapHost = String(body.imapHost || '').trim();
+    if (body.imapPort) acc.imapPort = Number(body.imapPort);
+    if (body.imapSecure !== undefined) acc.imapSecure = body.imapSecure !== false;
+    if (body.smtpHost !== undefined) acc.smtpHost = String(body.smtpHost || '').trim();
+    if (body.smtpPort) acc.smtpPort = Number(body.smtpPort);
+    if (body.smtpSecure !== undefined) acc.smtpSecure = body.smtpSecure !== false;
+    writeJSON(MAIL_FILE, mailAccounts);
+    return sendJSON(res, 200, mailAccSafe(acc));
+  }
+  if (accMatch && req.method === 'DELETE') {
+    const idx = mailAccounts.accounts.findIndex((a) => a.id === accMatch[1]);
+    if (idx === -1) return sendError(res, 404, '账户不存在');
+    mailAccounts.accounts.splice(idx, 1);
+    MAIL.lastUids.delete(accMatch[1]);
+    writeJSON(MAIL_FILE, mailAccounts);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // 需要账户 ID 的操作
+  const accId = url.searchParams.get('account');
+  const acc = accId ? mailFind(accId) : null;
+  if (accId && !acc) return sendError(res, 404, '账户不存在');
+  if (pathname.startsWith('/api/mail/') && !mailEnabled()) return sendError(res, 503, '邮件模块未启用（缺少依赖）');
+
+  if (pathname === '/api/mail/folders' && req.method === 'GET') {
+    try { return sendJSON(res, 200, await mailFolders(acc)); }
+    catch (e) { return sendError(res, 502, e.message || '获取文件夹失败'); }
+  }
+  if (pathname === '/api/mail/list' && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || 'INBOX';
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+    try { return sendJSON(res, 200, await mailList(acc, folder, { from: (page - 1) * 50 + 1, to: page * 50 })); }
+    catch (e) { return sendError(res, 502, e.message || '获取邮件失败'); }
+  }
+  if (pathname === '/api/mail/read' && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || 'INBOX';
+    const uid = Number(url.searchParams.get('uid')) || 0;
+    try {
+      const m = await mailRead(acc, folder, uid);
+      if (!m) return sendError(res, 404, '邮件不存在');
+      return sendJSON(res, 200, m);
+    } catch (e) { return sendError(res, 502, e.message || '读取失败'); }
+  }
+  if (pathname === '/api/mail/attachment' && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || 'INBOX';
+    const uid = Number(url.searchParams.get('uid')) || 0;
+    const idx = Number(url.searchParams.get('index')) || 0;
+    try {
+      const a = await mailAttachment(acc, folder, uid, idx);
+      if (!a) return sendError(res, 404, '附件不存在');
+      res.writeHead(200, {
+        'Content-Type': a.contentType,
+        'Content-Length': a.content.length,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(a.filename)}`,
+      });
+      return res.end(Buffer.from(a.content, 'base64'));
+    } catch (e) { return sendError(res, 502, e.message || '附件下载失败'); }
+  }
+  if (pathname === '/api/mail/flag' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const folder = body.folder || 'INBOX';
+    const uids = Array.isArray(body.uids) ? body.uids.map(Number) : [Number(body.uid) || 0];
+    try { return sendJSON(res, 200, await mailFlag(acc, folder, uids.filter(Boolean), body.action)); }
+    catch (e) { return sendError(res, 502, e.message || '操作失败'); }
+  }
+  if (pathname === '/api/mail/send' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    try { return sendJSON(res, 200, await mailSend(acc, body)); }
+    catch (e) { return sendError(res, 502, e.message || '发送失败'); }
+  }
+  if (pathname === '/api/mail/poll' && req.method === 'GET') {
+    try { return sendJSON(res, 200, await mailStatusAll()); }
+    catch (e) { return sendError(res, 502, e.message || '轮询失败'); }
+  }
+
+  return sendError(res, 404, '接口不存在');
+}
+
 // ── API 路由处理 ──────────────────────────────────────────────────
 async function handleAPI(req, res, pathname, url) {
   // 认证状态（公开）
@@ -516,6 +906,9 @@ async function handleAPI(req, res, pathname, url) {
   const s = requireAuth(req, res);
   if (!s) return;
   const me = s.user;
+
+  // 邮件模块
+  if (pathname.startsWith('/api/mail/')) return handleMailAPI(req, res, pathname, url, me);
 
   // 修改资料（名称 / 头像）
   if (pathname === '/api/profile' && req.method === 'POST') {
