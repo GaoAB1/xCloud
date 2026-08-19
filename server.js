@@ -549,28 +549,31 @@ async function mailList(acc, folder, range) {
   try {
     const lock = await c.getMailboxLock(folder || 'INBOX');
     try {
-      const from = range.from || 1;
-      const to = range.to || from + 49;
-      const total = c.mailbox.exists;
-      const seq = `${Math.min(from, total)}:*`; // 最近 50 封
+      const total = c.mailbox.exists || 0;
+      const uidNext = c.mailbox.uidNext || 0;
+      // 空邮箱直接返回，避免 IMAP range 异常上浮 502
+      if (total === 0) return { total: 0, uidNext, items: [] };
+      // 仅拉取最近 50 封，减少 IMAP 流量和解析时间
+      const limit = Math.min(50, total);
+      const fromSeq = Math.max(1, total - limit + 1);
+      const seq = `${fromSeq}:*`;
       const items = [];
-      let uidNext = c.mailbox.uidNext;
-      for await (const m of c.fetch(seq, { envelope: true, flags: true, uid: true }, { uid: false, changedSince: 0 })) {
-        const env = m.envelope || {};
+      for await (const msg of c.fetch(seq, { envelope: true, flags: true })) {
+        const env = msg.envelope || {};
         items.push({
-          uid: m.uid,
-          seq: m.seq,
-          flags: m.flags || [],
-          seen: (m.flags || []).includes('\\Seen'),
+          uid: msg.uid,
+          seq: msg.seq,
+          flags: msg.flags || [],
+          seen: (msg.flags || []).includes('\\Seen'),
           subject: env.subject || '(无主题)',
           fromName: env.from && env.from[0] ? (env.from[0].name || env.from[0].address || '') : '',
           fromAddr: env.from && env.from[0] ? env.from[0].address || '' : '',
           date: env.date ? env.date.getTime() : 0,
-          size: m.size || 0,
+          size: msg.size || 0,
         });
       }
       items.sort((a, b) => b.uid - a.uid);
-      return { total, uidNext, items: items.slice(0, to - from + 1) };
+      return { total, uidNext, items };
     } finally { lock.release(); }
   } finally {
     try { await c.logout(); } catch { /* ignore */ }
