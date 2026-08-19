@@ -28,6 +28,7 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const FILES_DIR = path.join(DATA_DIR, 'files'); // 网盘根目录
+const TRASH_DIR = path.join(DATA_DIR, 'trash'); // 回收站
 
 // OnlyOffice / 部署配置
 const ONLYOFFICE_URL = (process.env.ONLYOFFICE_URL || 'http://localhost:8080').replace(/\/+$/, '');
@@ -47,7 +48,7 @@ const MAX_UPLOAD = 10 * 1024 * 1024 * 1024; // 单文件上传上限 10GB
 const WEATHER_CACHE_MS = 10 * 60 * 1000;
 
 // ── 目录与数据初始化 ─────────────────────────────────────────────
-for (const d of [DATA_DIR, UPLOAD_DIR, FILES_DIR]) {
+for (const d of [DATA_DIR, UPLOAD_DIR, FILES_DIR, TRASH_DIR]) {
   fs.mkdirSync(d, { recursive: true });
 }
 
@@ -305,6 +306,112 @@ function parentPath(rel) {
   if (clean === '' || clean === '/') return '';
   const idx = clean.lastIndexOf('/');
   return idx <= 0 ? '/' : clean.slice(0, idx);
+}
+
+// ── 回收站（trash） ──────────────────────────────────────────────
+// 删除 = 移入 data/trash 并保留原相对路径；恢复 = 移回原位置
+function trashPathOf(rel) {
+  const safe = String(rel || '').replace(/^[/\\]+/, '').replace(/\\/g, '/');
+  return path.join(TRASH_DIR, safe);
+}
+function resolveTrashPath(rel) {
+  const base = path.resolve(TRASH_DIR);
+  const p = path.resolve(base, '.' + path.normalize('/' + String(rel || '').replace(/\\/g, '/')));
+  const rel2 = path.relative(base, p);
+  if (rel2 === '') return base;
+  if (rel2.startsWith('..') || path.isAbsolute(rel2)) return null;
+  return p;
+}
+// 递归列出回收站
+function listTrash() {
+  const out = [];
+  (function walk(dir, prefix) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      const rel = prefix ? prefix + '/' + ent.name : ent.name;
+      try {
+        if (ent.isDirectory()) walk(full, rel);
+        else {
+          const st = fs.statSync(full);
+          out.push({ name: rel, size: st.size, sizeText: formatSize(st.size), mtime: st.mtimeMs, type: 'file', ext: extOf(ent.name), editable: !!EDITABLE[extOf(ent.name)] });
+        }
+      } catch { /* ignore */ }
+    }
+  })(TRASH_DIR, '');
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+// 移入回收站（返回错误信息或 null）
+function moveToTrash(rel) {
+  const src = resolveFilePath(rel);
+  if (!src || !fs.existsSync(src)) return '目标不存在';
+  if (path.resolve(src) === path.resolve(FILES_DIR)) return '不能删除根目录';
+  let dst = trashPathOf(rel);
+  if (path.resolve(dst) === path.resolve(TRASH_DIR)) return '不能删除根目录';
+  // 冲突时加时间戳后缀
+  if (fs.existsSync(dst)) {
+    const ts = '-' + Date.now();
+    const ext = path.extname(dst);
+    const base = dst.slice(0, dst.length - ext.length);
+    dst = base + ts + ext;
+  }
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.renameSync(src, dst);
+  return null;
+}
+// 从回收站恢复
+function restoreTrash(rel) {
+  const src = resolveTrashPath(rel);
+  if (!src || src === path.resolve(TRASH_DIR) || !fs.existsSync(src)) return '目标不存在';
+  let dst = resolveFilePath(rel);
+  if (!dst || dst === resolveFilePath('/')) return '路径无效';
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  if (fs.existsSync(dst)) dst = uniqueFilePath(dst);
+  fs.renameSync(src, dst);
+  return null;
+}
+// 彻底删除回收站项目
+function purgeTrash(rel) {
+  const src = resolveTrashPath(rel);
+  if (!src || src === path.resolve(TRASH_DIR) || !fs.existsSync(src)) return '目标不存在';
+  try {
+    fs.rmSync(src, { recursive: true, force: true });
+  } catch (e) {
+    if (fs.existsSync(src)) return '删除失败';
+  }
+  return null;
+}
+// 清空回收站
+function emptyTrash() {
+  for (const name of fs.readdirSync(TRASH_DIR)) {
+    const full = path.join(TRASH_DIR, name);
+    try { fs.rmSync(full, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+  return null;
+}
+// 近期文件：递归扫描 FILES_DIR，按 mtime 取最近 N 个
+function recentFiles(limit) {
+  const max = Math.min(100, Math.max(1, Number(limit) || 20));
+  const out = [];
+  (function walk(dir, prefix) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      const rel = prefix ? prefix + '/' + ent.name : ent.name;
+      try {
+        if (ent.isDirectory()) walk(full, rel);
+        else {
+          const st = fs.statSync(full);
+          out.push({ name: rel, size: st.size, sizeText: formatSize(st.size), mtime: st.mtimeMs, type: 'file', ext: extOf(ent.name), editable: !!EDITABLE[extOf(ent.name)] });
+        }
+      } catch { /* ignore */ }
+    }
+  })(FILES_DIR, '');
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out.slice(0, max);
 }
 
 // 修复 busboy 可能将 UTF-8 中文文件名误按 latin1 解码的乱码（双保险）
@@ -1094,14 +1201,34 @@ async function handleAPI(req, res, pathname, url) {
   }
   if (pathname === '/api/files/delete' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-    const full = resolveFilePath(body.path || '');
-    if (!full || full === resolveFilePath('/') || !fs.existsSync(full)) return sendError(res, 400, '目标不存在');
-    try {
-      fs.rmSync(full, { recursive: true, force: true });
-    } catch (e) {
-      // 某些环境（如带回收站 shim）删除可能抛错，若文件已不存在则视为成功
-      if (fs.existsSync(full)) return sendError(res, 500, '删除失败');
-    }
+    // 删除 = 移入回收站（可恢复）
+    const err = moveToTrash(body.path || '');
+    if (err) return sendError(res, 400, err);
+    return sendJSON(res, 200, { ok: true, trash: true });
+  }
+  // 近期文件（侧栏）
+  if (pathname === '/api/files/recent' && req.method === 'GET') {
+    const limit = Number(url.searchParams.get('limit')) || 20;
+    return sendJSON(res, 200, { items: recentFiles(limit) });
+  }
+  // ═══ 回收站 API ═══
+  if (pathname === '/api/trash/list' && req.method === 'GET') {
+    return sendJSON(res, 200, { items: listTrash() });
+  }
+  if (pathname === '/api/trash/restore' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const err = restoreTrash(body.path || '');
+    if (err) return sendError(res, 400, err);
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (pathname === '/api/trash/purge' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const err = purgeTrash(body.path || '');
+    if (err) return sendError(res, 400, err);
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (pathname === '/api/trash/empty' && req.method === 'POST') {
+    emptyTrash();
     return sendJSON(res, 200, { ok: true });
   }
 

@@ -618,17 +618,23 @@ function bindEvents() {
     if (b) b.addEventListener('click', fn);
   });
 
-  // 视图切换按钮（占位，预留给 grid 模式）
-  const viewModeBtn = document.getElementById('btn-view-mode');
-  if (viewModeBtn) {
-    viewModeBtn.addEventListener('click', () => {
-      fileViewMode = fileViewMode === 'list' ? 'grid' : 'list';
-      const head = document.querySelector('.files-head');
-      const list = $('#files-list');
-      if (head) head.classList.toggle('grid-mode', fileViewMode === 'grid');
-      if (list) list.classList.toggle('grid-mode', fileViewMode === 'grid');
+  // 主题切换按钮
+  const themeBtn = document.getElementById('btn-theme');
+  if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+
+  // 侧栏折叠/展开按钮
+  const sidebarToggle = document.getElementById('btn-sidebar-toggle');
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      const wrap = $('#files-wrap');
+      wrap.classList.toggle('sidebar-collapsed');
     });
   }
+  // 侧栏导航切换（近期 / 全部 / 回收站）
+  $$('.fs-nav').forEach((b) => b.addEventListener('click', () => {
+    switchFsView(b.dataset.fsview);
+  }));
+
   // "更多" 按钮占位
   const moreBtn = document.getElementById('btn-files-more');
   if (moreBtn) moreBtn.addEventListener('click', () => toast('更多操作：暂未实现'));
@@ -794,13 +800,31 @@ async function doLogout() {
   showView('login');
 }
 
-/* ═══════════════ 文件（云盘） ═══════════════ */
+/* ═══════════════ 主题切换 ═══════════════ */
+function applyTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('panel_theme', t);
+}
+function initTheme() {
+  const saved = localStorage.getItem('panel_theme');
+  if (saved) return applyTheme(saved);
+  // 未设置则跟随系统
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark ? 'dark' : 'light');
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
+
 /* ═══════════════ 文件（云盘） ═══════════════ */
 let currentPath = '/';
 let nameSheetMode = 'mkdir';
 let nameSheetTarget = '';
 let selectedFiles = new Set();
 let fileViewMode = 'list';
+let currentFsView = 'all';   // all | recent | trash
 
 const FILE_ICONS = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
@@ -853,6 +877,12 @@ function joinPath(dir, name) {
 
 async function loadFiles(path) {
   currentPath = path || '/';
+  currentFsView = 'all';
+  $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === 'all'));
+  const mkdirBtn = $('#btn-mkdir');
+  const uploadBtn = $('#btn-upload-file');
+  if (mkdirBtn) mkdirBtn.hidden = false;
+  if (uploadBtn) uploadBtn.hidden = false;
   selectedFiles.clear();
   try {
     const data = await api('/api/files?path=' + encodeURIComponent(currentPath));
@@ -860,6 +890,151 @@ async function loadFiles(path) {
     renderHero(data);
     renderFiles(data);
   } catch (msg) { toast(msg.message); }
+}
+
+/* ── 侧栏视图切换：近期 / 全部 / 回收站 ── */
+function switchFsView(view) {
+  currentFsView = view || 'all';
+  $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === currentFsView));
+  selectedFiles.clear();
+  updateSelectionUI();
+  // 视图相关按钮显隐：回收站视图隐藏「新建文件夹/上传」
+  const mkdirBtn = $('#btn-mkdir');
+  const uploadBtn = $('#btn-upload-file');
+  if (mkdirBtn) mkdirBtn.hidden = currentFsView === 'trash';
+  if (uploadBtn) uploadBtn.hidden = currentFsView === 'trash';
+  if (view === 'recent') loadRecent();
+  else if (view === 'trash') loadTrash();
+  else loadFiles('/');
+}
+
+async function loadRecent() {
+  $('#files-hero-title').textContent = '近期文件';
+  $('#files-hero-sub').textContent = '按修改时间排序';
+  $('#file-crumbs').innerHTML = '';
+  $('#files-empty').hidden = true;
+  $('#files-panel').hidden = false;
+  const ul = $('#files-list');
+  ul.innerHTML = '<div class="mail-loading">正在加载…</div>';
+  try {
+    const data = await api('/api/files/recent?limit=30');
+    ul.innerHTML = '';
+    if (!data.items || !data.items.length) {
+      $('#files-empty').hidden = false;
+      $('#files-empty').textContent = '暂无文件';
+      return;
+    }
+    // 按天分组
+    const groups = groupByTime(data.items);
+    for (const g of groups) {
+      const head = document.createElement('li');
+      head.className = 'file-group';
+      head.textContent = g.label;
+      ul.appendChild(head);
+      for (const item of g.items) {
+        const rel = '/' + item.name;
+        const kindClass = fileIconClass(item);
+        ul.appendChild(fileRowEl(item, rel, kindClass));
+      }
+    }
+    // 近期文件点击直接下载（跨目录）
+    bindRecentListEvents();
+  } catch (e) {
+    ul.innerHTML = '';
+    $('#files-empty').hidden = false;
+    $('#files-empty').textContent = '加载失败：' + e.message;
+  }
+}
+
+// 近期文件行：点击下载/编辑，操作列提供下载
+function bindRecentListEvents() {
+  $('#files-list').querySelectorAll('.file-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      const actionBtn = e.target.closest('[data-act]');
+      const checkBox = e.target.closest('input[type="checkbox"]');
+      if (checkBox) { e.stopPropagation(); toggleSelectRow(row); return; }
+      if (actionBtn) {
+        const act = actionBtn.dataset.act;
+        if (act === 'download') downloadFile(row.dataset.path);
+        else if (act === 'edit') editFile(row.dataset.path);
+        else if (act === 'del') { /* 近期列表不提供删除 */ }
+        return;
+      }
+      if (selectedFiles.size > 0) { toggleSelectRow(row); return; }
+      if (row.dataset.editable === '1') editFile(row.dataset.path);
+      else downloadFile(row.dataset.path);
+    });
+  });
+}
+
+async function loadTrash() {
+  $('#files-hero-title').textContent = '回收站';
+  $('#files-hero-sub').textContent = '删除的文件在这里，可恢复或彻底删除';
+  $('#file-crumbs').innerHTML = '';
+  $('#files-empty').hidden = true;
+  $('#files-panel').hidden = false;
+  const ul = $('#files-list');
+  ul.innerHTML = '<div class="mail-loading">正在加载…</div>';
+  try {
+    const data = await api('/api/trash/list');
+    ul.innerHTML = '';
+    if (!data.items || !data.items.length) {
+      $('#files-empty').hidden = false;
+      $('#files-empty').textContent = '回收站为空';
+      return;
+    }
+    for (const item of data.items) {
+      const li = document.createElement('li');
+      li.className = 'file-row trash-row';
+      li.dataset.path = item.name;
+      const kindClass = fileIconClass({ type: 'file', ext: item.ext });
+      const actions = [
+        '<button class="icon-btn" data-act="restore" title="恢复">' + FILE_ICONS.download + '</button>',
+        '<button class="icon-btn" data-act="purge" title="彻底删除">' + FILE_ICONS.del + '</button>',
+      ];
+      const nameTitle = escapeHTML(item.name);
+      li.innerHTML = [
+        '<span class="file-check"><input type="checkbox" aria-label="选择"/></span>',
+        '<span class="file-icon">',
+          '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>',
+          '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '</span>',
+        '</span>',
+        '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>',
+        '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>',
+        '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
+        '<span class="file-actions">' + actions.join('') + '</span>'
+      ].join('');
+      li.addEventListener('click', (e) => {
+        const actionBtn = e.target.closest('[data-act]');
+        if (actionBtn) {
+          const act = actionBtn.dataset.act;
+          if (act === 'restore') trashRestore(item.name);
+          else if (act === 'purge') trashPurge(item.name);
+        }
+      });
+      ul.appendChild(li);
+    }
+  } catch (e) {
+    ul.innerHTML = '';
+    $('#files-empty').hidden = false;
+    $('#files-empty').textContent = '加载失败：' + e.message;
+  }
+}
+
+async function trashRestore(name) {
+  try {
+    await api('/api/trash/restore', { method: 'POST', body: { path: name } });
+    toast('已恢复');
+    await loadTrash();
+  } catch (e) { toast(e.message); }
+}
+async function trashPurge(name) {
+  if (!confirm('彻底删除「' + name + '」？此操作不可恢复。')) return;
+  try {
+    await api('/api/trash/purge', { method: 'POST', body: { path: name } });
+    toast('已彻底删除');
+    await loadTrash();
+  } catch (e) { toast(e.message); }
 }
 
 function folderTitle() {
@@ -1010,10 +1185,14 @@ function renderFiles(data) {
 function updateSelectionUI() {
   const n = selectedFiles.size;
   const enable = n > 0;
-  ['btn-share-sel', 'btn-download-sel', 'btn-del-sel'].forEach((id) => {
+  const inTrash = currentFsView === 'trash';
+  // 回收站视图：批量分享/下载不可用（每行自带恢复/删除），删除按钮禁用
+  ['btn-share-sel', 'btn-download-sel'].forEach((id) => {
     const b = document.getElementById(id);
-    if (b) b.disabled = !enable;
+    if (b) b.disabled = !enable || inTrash;
   });
+  const delBtn = document.getElementById('btn-del-sel');
+  if (delBtn) delBtn.disabled = inTrash ? true : !enable;
   const sub = $('#files-hero-sub');
   if (n > 0 && sub) {
     sub.textContent = '已选择 ' + n + ' 个项目';
@@ -1034,13 +1213,13 @@ function toggleSelectRow(row) {
 async function deleteSelected() {
   const paths = Array.from(selectedFiles);
   if (!paths.length) return;
-  if (!confirm('确定删除选中的 ' + paths.length + ' 个项目？此操作不可撤销。')) return;
+  if (!confirm('确定删除选中的 ' + paths.length + ' 个项目？将移入回收站。')) return;
   try {
     for (const p of paths) {
       await api('/api/files/delete', { method: 'POST', body: { path: p } });
     }
     selectedFiles.clear();
-    toast('已删除 ' + paths.length + ' 个项目');
+    toast('已移入回收站 ' + paths.length + ' 个项目');
     await loadFiles(currentPath);
   } catch (msg) { toast(msg.message); }
 }
@@ -1086,11 +1265,11 @@ function editFile(rel) {
 }
 async function deleteFile(rel) {
   const name = rel.split('/').pop();
-  if (!confirm('确定删除「' + name + '」？此操作不可撤销。')) return;
+  if (!confirm('确定删除「' + name + '」？将移入回收站。')) return;
   try {
     await api('/api/files/delete', { method: 'POST', body: { path: rel } });
     selectedFiles.delete(rel);
-    toast('已删除');
+    toast('已移入回收站');
     await loadFiles(currentPath);
   } catch (msg) { toast(msg.message); }
 }
@@ -1417,6 +1596,7 @@ async function enterDashboard() {
 
 /* ── 启动 ──────────────────────────────────────────────────────── */
 (async function init() {
+  initTheme();
   buildSwatches();
   bindEvents();
   try {
