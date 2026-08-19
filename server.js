@@ -6,6 +6,7 @@
  * - 首次启动引导创建管理员账户；scrypt 密码哈希 + 会话 Cookie
  * - 应用管理（内网/外网双地址）、头像上传、Open-Meteo 天气代理
  * - 网盘文件系统（浏览/上传/下载/建夹/重命名/移动/删除）
+ * - 回收站（删除移入 trash，可恢复/彻底删除/清空）
  * - OnlyOffice 在线编辑（JWT 签名 + callback 保存）
  * - 邮件（IMAP 收件 / SMTP 发件）
  */
@@ -29,6 +30,7 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const FILES_DIR = path.join(DATA_DIR, 'files'); // 网盘根目录
+const TRASH_DIR = path.join(DATA_DIR, 'trash'); // 回收站
 
 const ONLYOFFICE_URL = (process.env.ONLYOFFICE_URL || 'http://localhost:8080').replace(/\/+$/, '');
 const ONLYOFFICE_INTERNAL_URL = (process.env.ONLYOFFICE_INTERNAL_URL || '').replace(/\/+$/, '');
@@ -46,7 +48,7 @@ const MAX_BODY = 8 * 1024 * 1024;
 const MAX_UPLOAD = 10 * 1024 * 1024 * 1024;
 const WEATHER_CACHE_MS = 10 * 60 * 1000;
 
-for (const d of [DATA_DIR, UPLOAD_DIR, FILES_DIR]) { fs.mkdirSync(d, { recursive: true }); }
+for (const d of [DATA_DIR, UPLOAD_DIR, FILES_DIR, TRASH_DIR]) { fs.mkdirSync(d, { recursive: true }); }
 
 function readJSON(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
 function writeJSON(file, data) { const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8'); fs.renameSync(tmp, file); }
@@ -132,6 +134,75 @@ function listDir(rel) {
 }
 
 function parentPath(rel) { const clean = ('/' + String(rel || '').replace(/\\/g, '/')).replace(/\/+/g, '/'); if (clean === '' || clean === '/') return ''; const idx = clean.lastIndexOf('/'); return idx <= 0 ? '/' : clean.slice(0, idx); }
+
+// ── 回收站（trash） ──
+// 删除 = 移入 data/trash 保留原相对路径；恢复 = 移回原位置
+function trashPathOf(rel) { const safe = String(rel || '').replace(/^[/\\]+/, '').replace(/\\/g, '/'); return path.join(TRASH_DIR, safe); }
+function resolveTrashPath(rel) { const base = path.resolve(TRASH_DIR); const p = path.resolve(base, '.' + path.normalize('/' + String(rel || '').replace(/\\/g, '/'))); const rel2 = path.relative(base, p); if (rel2 === '') return base; if (rel2.startsWith('..') || path.isAbsolute(rel2)) return null; return p; }
+function listTrash() {
+  const out = [];
+  (function walk(dir, prefix) {
+    let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name); const rel = prefix ? prefix + '/' + ent.name : ent.name;
+      try {
+        if (ent.isDirectory()) walk(full, rel);
+        else { const st = fs.statSync(full); out.push({ name: rel, size: st.size, sizeText: formatSize(st.size), mtime: st.mtimeMs, type: 'file', ext: extOf(ent.name), editable: !!EDITABLE[extOf(ent.name)] }); }
+      } catch { /* ignore */ }
+    }
+  })(TRASH_DIR, '');
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+function moveToTrash(rel) {
+  const src = resolveFilePath(rel);
+  if (!src || !fs.existsSync(src)) return '目标不存在';
+  if (path.resolve(src) === path.resolve(FILES_DIR)) return '不能删除根目录';
+  let dst = trashPathOf(rel);
+  if (path.resolve(dst) === path.resolve(TRASH_DIR)) return '不能删除根目录';
+  if (fs.existsSync(dst)) { const ts = '-' + Date.now(); const ext = path.extname(dst); const base = dst.slice(0, dst.length - ext.length); dst = base + ts + ext; }
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.renameSync(src, dst);
+  return null;
+}
+function restoreTrash(rel) {
+  const src = resolveTrashPath(rel);
+  if (!src || src === path.resolve(TRASH_DIR) || !fs.existsSync(src)) return '目标不存在';
+  let dst = resolveFilePath(rel);
+  if (!dst || dst === resolveFilePath('/')) return '路径无效';
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  if (fs.existsSync(dst)) dst = uniqueFilePath(dst);
+  fs.renameSync(src, dst);
+  return null;
+}
+function purgeTrash(rel) {
+  const src = resolveTrashPath(rel);
+  if (!src || src === path.resolve(TRASH_DIR) || !fs.existsSync(src)) return '目标不存在';
+  try { fs.rmSync(src, { recursive: true, force: true }); } catch (e) { if (fs.existsSync(src)) return '删除失败'; }
+  return null;
+}
+function emptyTrash() {
+  for (const name of fs.readdirSync(TRASH_DIR)) { const full = path.join(TRASH_DIR, name); try { fs.rmSync(full, { recursive: true, force: true }); } catch { /* ignore */ } }
+  return null;
+}
+// 近期文件：递归扫描 FILES_DIR，按 mtime 取最近 N 个
+function recentFiles(limit) {
+  const max = Math.min(100, Math.max(1, Number(limit) || 20));
+  const out = [];
+  (function walk(dir, prefix) {
+    let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name); const rel = prefix ? prefix + '/' + ent.name : ent.name;
+      try {
+        if (ent.isDirectory()) walk(full, rel);
+        else { const st = fs.statSync(full); out.push({ name: rel, size: st.size, sizeText: formatSize(st.size), mtime: st.mtimeMs, type: 'file', ext: extOf(ent.name), editable: !!EDITABLE[extOf(ent.name)] }); }
+      } catch { /* ignore */ }
+    }
+  })(FILES_DIR, '');
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out.slice(0, max);
+}
+
 function decodeFilename(name) { if (!name) return ''; if (/[\u0080-\u00FF]/.test(name)) { try { const fixed = Buffer.from(name, 'latin1').toString('utf8'); if (!fixed.includes('\uFFFD') && /[\u4e00-\u9fff]/.test(fixed)) return fixed; } catch { /* ignore */ } } return name; }
 
 function handleUpload(req) {
@@ -609,12 +680,26 @@ async function handleAPI(req, res, pathname, url) {
   }
   if (pathname === '/api/files/delete' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-    const full = resolveFilePath(body.path || '');
-    if (!full || full === resolveFilePath('/') || !fs.existsSync(full)) return sendError(res, 400, '目标不存在');
-    try { fs.rmSync(full, { recursive: true, force: true }); }
-    catch (e) { if (fs.existsSync(full)) return sendError(res, 500, '删除失败'); }
+    const err = moveToTrash(body.path || '');
+    if (err) return sendError(res, 400, err);
+    return sendJSON(res, 200, { ok: true, trash: true });
+  }
+  if (pathname === '/api/files/recent' && req.method === 'GET') {
+    const limit = Number(url.searchParams.get('limit')) || 20;
+    return sendJSON(res, 200, { items: recentFiles(limit) });
+  }
+  if (pathname === '/api/trash/list' && req.method === 'GET') return sendJSON(res, 200, { items: listTrash() });
+  if (pathname === '/api/trash/restore' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const err = restoreTrash(body.path || ''); if (err) return sendError(res, 400, err);
     return sendJSON(res, 200, { ok: true });
   }
+  if (pathname === '/api/trash/purge' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const err = purgeTrash(body.path || ''); if (err) return sendError(res, 400, err);
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (pathname === '/api/trash/empty' && req.method === 'POST') { emptyTrash(); return sendJSON(res, 200, { ok: true }); }
   if (pathname === '/api/onlyoffice/config' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
     const rel = String(body.path || ''); const full = resolveFilePath(rel);
