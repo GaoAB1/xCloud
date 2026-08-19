@@ -60,12 +60,8 @@ function avatarHTML(user, cls = 'avatar') {
 }
 
 function renderAvatars() {
-  $('#nav-avatar').innerHTML = currentUser && currentUser.avatar
-    ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">`
-    : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
-  $('#profile-avatar').innerHTML = currentUser && currentUser.avatar
-    ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">`
-    : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
+  $('#nav-avatar').innerHTML = currentUser && currentUser.avatar ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">` : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
+  $('#profile-avatar').innerHTML = currentUser && currentUser.avatar ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">` : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
 }
 
 function startClock() {
@@ -92,11 +88,7 @@ const WMO = {
   85: { l: '阵雪', e: '🌨️' }, 86: { l: '阵雪', e: '🌨️' },
   95: { l: '雷暴', e: '⛈️' }, 96: { l: '雷暴伴冰雹', e: '⛈️' }, 99: { l: '雷暴伴冰雹', e: '⛈️' },
 };
-function weatherInfo(code, isDay) {
-  const w = WMO[code] || { l: '未知', e: '🌡️' };
-  if (isDay === 0 && (code === 0 || code === 1)) w.e = code === 0 ? '🌙' : '☁️';
-  return w;
-}
+function weatherInfo(code, isDay) { const w = WMO[code] || { l: '未知', e: '🌡️' }; if (isDay === 0 && (code === 0 || code === 1)) w.e = code === 0 ? '🌙' : '☁️'; return w; }
 function deg(t) { return Math.round(t); }
 function renderWeather(w) {
   const cur = w.current || {};
@@ -114,10 +106,7 @@ function renderWeather(w) {
   $('#weather-panel').innerHTML = `<div class="weather-top"><div class="weather-icon">${info.e}</div><div><div class="weather-temp">${deg(cur.temperature_2m)}<sup>${unit}</sup></div><div class="weather-cond">${info.l}</div><div class="weather-loc">${escapeHTML(w.location || '')}</div></div></div><div class="weather-meta"><span class="m">体感 <b>${deg(cur.apparent_temperature)}°</b></span><span class="m">湿度 <b>${cur.relative_humidity_2m}%</b></span><span class="m">风速 <b>${cur.wind_speed_10m} km/h</b></span></div><div class="weather-forecast">${forecastHTML}</div>`;
 }
 
-async function loadWeather() {
-  try { const w = await api('/api/weather'); renderWeather(w); }
-  catch (e) { $('#weather-panel').innerHTML = '<div class="weather-loading">天气暂时不可用</div>'; }
-}
+async function loadWeather() { try { const w = await api('/api/weather'); renderWeather(w); } catch (e) { $('#weather-panel').innerHTML = '<div class="weather-loading">天气暂时不可用</div>'; } }
 
 function appIconHTML(app, sizeClass) {
   const cls = sizeClass ? `app-icon ${sizeClass}` : 'app-icon';
@@ -150,10 +139,7 @@ async function loadApps() { const data = await api('/api/apps'); currentApps = d
 function togglePopover() {
   const pop = $('#user-popover');
   if (!pop.hidden) { pop.hidden = true; return; }
-  pop.innerHTML = `
-    <div class="pop-user">${avatarHTML(currentUser)}<div><div class="pop-name">${escapeHTML(currentUser.name || currentUser.username)}</div><div class="pop-sub">@${escapeHTML(currentUser.username)}</div></div></div>
-    <button class="pop-item" data-act="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>账户设置</button>
-    <button class="pop-item danger" data-act="logout"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</button>`;
+  pop.innerHTML = `<div class="pop-user">${avatarHTML(currentUser)}<div><div class="pop-name">${escapeHTML(currentUser.name || currentUser.username)}</div><div class="pop-sub">@${escapeHTML(currentUser.username)}</div></div></div><button class="pop-item" data-act="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>账户设置</button><button class="pop-item danger" data-act="logout"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</button>`;
   pop.hidden = false;
   const rect = $('#user-chip').getBoundingClientRect();
   pop.style.top = `${rect.bottom + 8}px`;
@@ -223,8 +209,7 @@ function syncIconFields() {
 
 async function submitApp(e) {
   e.preventDefault();
-  const err = $('#app-error');
-  err.hidden = true;
+  const err = $('#app-error'); err.hidden = true;
   const name = $('#app-name').value.trim();
   const internal = $('#app-internal').value.trim();
   const external = $('#app-external').value.trim();
@@ -421,16 +406,14 @@ function bindEvents() {
   };
   Object.entries(selActionMap).forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); });
 
-  const viewModeBtn = document.getElementById('btn-view-mode');
-  if (viewModeBtn) {
-    viewModeBtn.addEventListener('click', () => {
-      fileViewMode = fileViewMode === 'list' ? 'grid' : 'list';
-      const head = document.querySelector('.files-head');
-      const list = $('#files-list');
-      if (head) head.classList.toggle('grid-mode', fileViewMode === 'grid');
-      if (list) list.classList.toggle('grid-mode', fileViewMode === 'grid');
-    });
-  }
+  const themeBtn = document.getElementById('btn-theme');
+  if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+
+  const sidebarToggle = document.getElementById('btn-sidebar-toggle');
+  if (sidebarToggle) sidebarToggle.addEventListener('click', () => { const wrap = $('#files-wrap'); wrap.classList.toggle('sidebar-collapsed'); });
+
+  $$('.fs-nav').forEach((b) => b.addEventListener('click', () => { switchFsView(b.dataset.fsview); }));
+
   const moreBtn = document.getElementById('btn-files-more');
   if (moreBtn) moreBtn.addEventListener('click', () => toast('更多操作：暂未实现'));
 
@@ -544,18 +527,25 @@ async function openSettings() {
   openSheet($('#settings-sheet'));
 }
 
-async function doLogout() {
-  try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
-  currentUser = null;
-  showView('login');
-}
+async function doLogout() { try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ } currentUser = null; showView('login'); }
 
-/* ═══════════════ 文件（云盘）— iCloud 风格 ═══════════════ */
+/* ═══════════════ 主题切换 ═══════════════ */
+function applyTheme(theme) { const t = theme === 'dark' ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', t); localStorage.setItem('panel_theme', t); }
+function initTheme() {
+  const saved = localStorage.getItem('panel_theme');
+  if (saved) return applyTheme(saved);
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark ? 'dark' : 'light');
+}
+function toggleTheme() { const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; applyTheme(cur === 'dark' ? 'light' : 'dark'); }
+
+/* ═══════════════ 文件（云盘） ═══════════════ */
 let currentPath = '/';
 let nameSheetMode = 'mkdir';
 let nameSheetTarget = '';
 let selectedFiles = new Set();
 let fileViewMode = 'list';
+let currentFsView = 'all';   // all | recent | trash
 
 const FILE_ICONS = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
@@ -577,10 +567,7 @@ const FILE_GLYPH_SVG = {
   other: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>',
 };
 
-const FILE_KIND_LABEL = {
-  dir: '文件夹', word: '文档', cell: '电子表格', slide: '演示文稿', pdf: 'PDF',
-  image: '图片', video: '视频', audio: '音频', archive: '压缩包', other: '文件',
-};
+const FILE_KIND_LABEL = { dir: '文件夹', word: '文档', cell: '电子表格', slide: '演示文稿', pdf: 'PDF', image: '图片', video: '视频', audio: '音频', archive: '压缩包', other: '文件' };
 
 function fileIconClass(item) {
   if (item.type === 'dir') return 'dir';
@@ -595,15 +582,16 @@ function fileIconClass(item) {
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(e)) return 'archive';
   return 'other';
 }
-function formatMtime(ms) {
-  const d = new Date(ms);
-  const p = (n) => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
-}
+function formatMtime(ms) { const d = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
 function joinPath(dir, name) { if (dir === '/' || dir === '') return '/' + name; return dir.replace(/\/+$/, '') + '/' + name; }
 
 async function loadFiles(path) {
   currentPath = path || '/';
+  currentFsView = 'all';
+  $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === 'all'));
+  const mkdirBtn = $('#btn-mkdir'); const uploadBtn = $('#btn-upload-file');
+  if (mkdirBtn) mkdirBtn.hidden = false;
+  if (uploadBtn) uploadBtn.hidden = false;
   selectedFiles.clear();
   try {
     const data = await api('/api/files?path=' + encodeURIComponent(currentPath));
@@ -612,6 +600,92 @@ async function loadFiles(path) {
     renderFiles(data);
   } catch (msg) { toast(msg.message); }
 }
+
+function switchFsView(view) {
+  currentFsView = view || 'all';
+  $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === currentFsView));
+  selectedFiles.clear();
+  updateSelectionUI();
+  const mkdirBtn = $('#btn-mkdir'); const uploadBtn = $('#btn-upload-file');
+  if (mkdirBtn) mkdirBtn.hidden = currentFsView === 'trash';
+  if (uploadBtn) uploadBtn.hidden = currentFsView === 'trash';
+  if (view === 'recent') loadRecent();
+  else if (view === 'trash') loadTrash();
+  else loadFiles('/');
+}
+
+async function loadRecent() {
+  $('#files-hero-title').textContent = '近期文件';
+  $('#files-hero-sub').textContent = '按修改时间排序';
+  $('#file-crumbs').innerHTML = '';
+  $('#files-empty').hidden = true;
+  $('#files-panel').hidden = false;
+  const ul = $('#files-list');
+  ul.innerHTML = '<div class="mail-loading">正在加载…</div>';
+  try {
+    const data = await api('/api/files/recent?limit=30');
+    ul.innerHTML = '';
+    if (!data.items || !data.items.length) { $('#files-empty').hidden = false; $('#files-empty').textContent = '暂无文件'; return; }
+    const groups = groupByTime(data.items);
+    for (const g of groups) {
+      const head = document.createElement('li'); head.className = 'file-group'; head.textContent = g.label; ul.appendChild(head);
+      for (const item of g.items) { const rel = '/' + item.name; const kindClass = fileIconClass(item); ul.appendChild(fileRowEl(item, rel, kindClass)); }
+    }
+    bindRecentListEvents();
+  } catch (e) { ul.innerHTML = ''; $('#files-empty').hidden = false; $('#files-empty').textContent = '加载失败：' + e.message; }
+}
+
+function bindRecentListEvents() {
+  $('#files-list').querySelectorAll('.file-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      const actionBtn = e.target.closest('[data-act]');
+      const checkBox = e.target.closest('input[type="checkbox"]');
+      if (checkBox) { e.stopPropagation(); toggleSelectRow(row); return; }
+      if (actionBtn) {
+        const act = actionBtn.dataset.act;
+        if (act === 'download') downloadFile(row.dataset.path);
+        else if (act === 'edit') editFile(row.dataset.path);
+        else if (act === 'del') { /* 近期列表不提供删除 */ }
+        return;
+      }
+      if (selectedFiles.size > 0) { toggleSelectRow(row); return; }
+      if (row.dataset.editable === '1') editFile(row.dataset.path);
+      else downloadFile(row.dataset.path);
+    });
+  });
+}
+
+async function loadTrash() {
+  $('#files-hero-title').textContent = '回收站';
+  $('#files-hero-sub').textContent = '删除的文件在这里，可恢复或彻底删除';
+  $('#file-crumbs').innerHTML = '';
+  $('#files-empty').hidden = true;
+  $('#files-panel').hidden = false;
+  const ul = $('#files-list');
+  ul.innerHTML = '<div class="mail-loading">正在加载…</div>';
+  try {
+    const data = await api('/api/trash/list');
+    ul.innerHTML = '';
+    if (!data.items || !data.items.length) { $('#files-empty').hidden = false; $('#files-empty').textContent = '回收站为空'; return; }
+    for (const item of data.items) {
+      const li = document.createElement('li');
+      li.className = 'file-row trash-row';
+      li.dataset.path = item.name;
+      const kindClass = fileIconClass({ type: 'file', ext: item.ext });
+      const actions = ['<button class="icon-btn" data-act="restore" title="恢复">' + FILE_ICONS.download + '</button>', '<button class="icon-btn" data-act="purge" title="彻底删除">' + FILE_ICONS.del + '</button>'];
+      const nameTitle = escapeHTML(item.name);
+      li.innerHTML = ['<span class="file-check"><input type="checkbox" aria-label="选择"/></span>', '<span class="file-icon">', '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>', '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '</span>', '</span>', '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>', '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>', '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>', '<span class="file-actions">' + actions.join('') + '</span>'].join('');
+      li.addEventListener('click', (e) => {
+        const actionBtn = e.target.closest('[data-act]');
+        if (actionBtn) { const act = actionBtn.dataset.act; if (act === 'restore') trashRestore(item.name); else if (act === 'purge') trashPurge(item.name); }
+      });
+      ul.appendChild(li);
+    }
+  } catch (e) { ul.innerHTML = ''; $('#files-empty').hidden = false; $('#files-empty').textContent = '加载失败：' + e.message; }
+}
+
+async function trashRestore(name) { try { await api('/api/trash/restore', { method: 'POST', body: { path: name } }); toast('已恢复'); await loadTrash(); } catch (e) { toast(e.message); } }
+async function trashPurge(name) { if (!confirm('彻底删除「' + name + '」？此操作不可恢复。')) return; try { await api('/api/trash/purge', { method: 'POST', body: { path: name } }); toast('已彻底删除'); await loadTrash(); } catch (e) { toast(e.message); } }
 
 function folderTitle() { if (currentPath === '/' || !currentPath) return '全部文件'; const parts = currentPath.split('/').filter(Boolean); return parts[parts.length - 1] || '全部文件'; }
 
@@ -627,9 +701,7 @@ function renderBreadcrumb() {
     const parts = currentPath.split('/').filter(Boolean);
     let acc = '';
     parts.forEach((p, i) => {
-      const sep = document.createElement('span');
-      sep.className = 'sep'; sep.textContent = '\u203A';
-      wrap.appendChild(sep);
+      const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '\u203A'; wrap.appendChild(sep);
       acc += '/' + p;
       const btn = document.createElement('button');
       btn.className = 'crumb' + (i === parts.length - 1 ? ' current' : '');
@@ -648,24 +720,11 @@ function renderHero(data) {
   $('#files-hero-sub').textContent = count + ' 个项目，共 ' + sizeText;
 }
 
-function timeBucketLabel(ms) {
-  const d = new Date(ms), now = new Date();
-  const diffDay = Math.floor((now - d) / (1000 * 60 * 60 * 24));
-  if (diffDay === 0) return '今天';
-  if (diffDay === 1) return '昨天';
-  if (diffDay < 7) return '本周早些时候';
-  if (diffDay < 30) return '上周';
-  if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月';
-  return d.getFullYear() + '年';
-}
+function timeBucketLabel(ms) { const d = new Date(ms); const now = new Date(); const diffDay = Math.floor((now - d) / (1000 * 60 * 60 * 24)); if (diffDay === 0) return '今天'; if (diffDay === 1) return '昨天'; if (diffDay < 7) return '本周早些时候'; if (diffDay < 30) return '上周'; if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月'; return d.getFullYear() + '年'; }
 function groupByTime(items) {
   const sorted = items.slice().sort((a, b) => { if (a.type !== b.type) return a.type === 'dir' ? -1 : 1; return b.mtime - a.mtime; });
   const groups = []; let lastBucket = null;
-  for (const it of sorted) {
-    const bucket = timeBucketLabel(it.mtime);
-    if (bucket !== lastBucket) { groups.push({ label: bucket, items: [] }); lastBucket = bucket; }
-    groups[groups.length - 1].items.push(it);
-  }
+  for (const it of sorted) { const bucket = timeBucketLabel(it.mtime); if (bucket !== lastBucket) { groups.push({ label: bucket, items: [] }); lastBucket = bucket; } groups[groups.length - 1].items.push(it); }
   return groups;
 }
 
@@ -687,17 +746,7 @@ function fileRowEl(item, fullPath, kindClass) {
   const svgGlyph = FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other;
   const nameTitle = escapeHTML(item.name);
   const kindInline = escapeHTML(subInfo);
-  li.innerHTML = [
-    '<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>',
-    '<span class="file-icon">',
-      '<span class="file-icon-bg ' + kindClass + '">' + svgGlyph + '</span>',
-      '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '<span class="file-kind-inline">' + kindInline + '</span></span>',
-    '</span>',
-    '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>',
-    '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>',
-    '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
-    '<span class="file-actions">' + actions.join('') + '</span>'
-  ].join('');
+  li.innerHTML = ['<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>', '<span class="file-icon">', '<span class="file-icon-bg ' + kindClass + '">' + svgGlyph + '</span>', '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '<span class="file-kind-inline">' + kindInline + '</span></span>', '</span>', '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>', '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>', '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>', '<span class="file-actions">' + actions.join('') + '</span>'].join('');
   return li;
 }
 
@@ -705,27 +754,13 @@ function renderFiles(data) {
   const ul = $('#files-list');
   ul.innerHTML = '';
   const groups = groupByTime(data.items);
-  if (groups.length === 0) {
-    $('#files-empty').hidden = false;
-    $('#files-panel').hidden = true;
-    $('#files-check-all').checked = false;
-    updateSelectionUI();
-    return;
-  }
+  if (groups.length === 0) { $('#files-empty').hidden = false; $('#files-panel').hidden = true; $('#files-check-all').checked = false; updateSelectionUI(); return; }
   $('#files-empty').hidden = true;
   $('#files-panel').hidden = false;
   const allPaths = [];
   for (const g of groups) {
-    const groupHead = document.createElement('li');
-    groupHead.className = 'file-group';
-    groupHead.textContent = g.label;
-    ul.appendChild(groupHead);
-    for (const item of g.items) {
-      const rel = joinPath(data.path, item.name);
-      const kindClass = fileIconClass(item);
-      ul.appendChild(fileRowEl(item, rel, kindClass));
-      allPaths.push(rel);
-    }
+    const groupHead = document.createElement('li'); groupHead.className = 'file-group'; groupHead.textContent = g.label; ul.appendChild(groupHead);
+    for (const item of g.items) { const rel = joinPath(data.path, item.name); const kindClass = fileIconClass(item); ul.appendChild(fileRowEl(item, rel, kindClass)); allPaths.push(rel); }
   }
   const allBox = $('#files-check-all');
   if (allBox) {
@@ -744,7 +779,10 @@ function renderFiles(data) {
 function updateSelectionUI() {
   const n = selectedFiles.size;
   const enable = n > 0;
-  ['btn-share-sel', 'btn-download-sel', 'btn-del-sel'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = !enable; });
+  const inTrash = currentFsView === 'trash';
+  ['btn-share-sel', 'btn-download-sel'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = !enable || inTrash; });
+  const delBtn = document.getElementById('btn-del-sel');
+  if (delBtn) delBtn.disabled = inTrash ? true : !enable;
   const sub = $('#files-hero-sub');
   if (n > 0 && sub) sub.textContent = '已选择 ' + n + ' 个项目';
 }
@@ -763,24 +801,17 @@ function toggleSelectRow(row) {
 async function deleteSelected() {
   const paths = Array.from(selectedFiles);
   if (!paths.length) return;
-  if (!confirm('确定删除选中的 ' + paths.length + ' 个项目？此操作不可撤销。')) return;
+  if (!confirm('确定删除选中的 ' + paths.length + ' 个项目？将移入回收站。')) return;
   try {
     for (const p of paths) await api('/api/files/delete', { method: 'POST', body: { path: p } });
     selectedFiles.clear();
-    toast('已删除 ' + paths.length + ' 个项目');
+    toast('已移入回收站 ' + paths.length + ' 个项目');
     await loadFiles(currentPath);
   } catch (msg) { toast(msg.message); }
 }
 
 function downloadSelected() {
-  Array.from(selectedFiles).forEach((p) => {
-    const a = document.createElement('a');
-    a.href = '/api/files/download?path=' + encodeURIComponent(p);
-    a.download = '';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  });
+  Array.from(selectedFiles).forEach((p) => { const a = document.createElement('a'); a.href = '/api/files/download?path=' + encodeURIComponent(p); a.download = ''; document.body.appendChild(a); a.click(); a.remove(); });
 }
 
 async function uploadFiles(files) {
@@ -797,19 +828,12 @@ async function uploadFiles(files) {
   if (count) toast('已上传 ' + count + ' 个文件');
   await loadFiles(currentPath);
 }
-function downloadFile(rel) {
-  const a = document.createElement('a');
-  a.href = '/api/files/download?path=' + encodeURIComponent(rel);
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
+function downloadFile(rel) { const a = document.createElement('a'); a.href = '/api/files/download?path=' + encodeURIComponent(rel); a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }
 function editFile(rel) { window.open('/edit.html?path=' + encodeURIComponent(rel), '_blank'); }
 async function deleteFile(rel) {
   const name = rel.split('/').pop();
-  if (!confirm('确定删除「' + name + '」？此操作不可撤销。')) return;
-  try { await api('/api/files/delete', { method: 'POST', body: { path: rel } }); selectedFiles.delete(rel); toast('已删除'); await loadFiles(currentPath); }
+  if (!confirm('确定删除「' + name + '」？将移入回收站。')) return;
+  try { await api('/api/files/delete', { method: 'POST', body: { path: rel } }); selectedFiles.delete(rel); toast('已移入回收站'); await loadFiles(currentPath); }
   catch (msg) { toast(msg.message); }
 }
 function openNameSheet(mode, target, type) {
@@ -832,22 +856,9 @@ let mailFoldersData = { folders: [], special: { junk: [], trash: [], sent: [], d
 let mailCurrentFolder = 'INBOX';
 let mailCurrentUid = null;
 let mailTimer = null;
-const MAIL_PRESETS = {
-  qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' },
-  163: { imap: 'imap.163.com', smtp: 'smtp.163.com' },
-  gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' },
-  outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' },
-};
+const MAIL_PRESETS = { qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' }, 163: { imap: 'imap.163.com', smtp: 'smtp.163.com' }, gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' }, outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' } };
 function applyMailPreset() { const p = MAIL_PRESETS[$('#ma-preset').value]; if (p) { $('#ma-imap').value = p.imap; $('#ma-smtp').value = p.smtp; } }
-function fmtMailTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts), now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  const pad = (n) => String(n).padStart(2, '0');
-  if (sameDay) return pad(d.getHours()) + ':' + pad(d.getMinutes());
-  if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日';
-  return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
-}
+function fmtMailTime(ts) { if (!ts) return ''; const d = new Date(ts); const now = new Date(); const sameDay = d.toDateString() === now.toDateString(); const pad = (n) => String(n).padStart(2, '0'); if (sameDay) return `${pad(d.getHours())}:${pad(d.getMinutes())}`; if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`; return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; }
 function fmtSize(n) { if (!n) return ''; if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
 
 async function enterMail() {
@@ -862,34 +873,21 @@ async function enterMail() {
       await loadMailList(true);
       startMailPoll();
     } else {
-      $('#mail-folders').innerHTML = '';
-      $('#mail-list').innerHTML = '';
-      $('#mail-empty').hidden = false;
-      $('#mail-empty').textContent = '还没有配置邮件账户，点击左侧「添加账户」。';
+      $('#mail-folders').innerHTML = ''; $('#mail-list').innerHTML = '';
+      $('#mail-empty').hidden = false; $('#mail-empty').textContent = '还没有配置邮件账户，点击左侧「添加账户」。';
       $('#mail-folder-title').textContent = '邮件';
       $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">请先添加邮件账户</div>';
       $('#mail-nav-badge').hidden = true;
     }
-  } catch (e) {
-    $('#mail-empty').hidden = false;
-    $('#mail-empty').textContent = '邮件模块加载失败：' + e.message;
-  }
+  } catch (e) { $('#mail-empty').hidden = false; $('#mail-empty').textContent = '邮件模块加载失败：' + e.message; }
 }
 
 function renderMailAccounts() {
   const wrap = $('#mail-accounts');
-  if (!mailAccounts.length) {
-    wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
-  } else {
-    wrap.innerHTML = mailAccounts.map((a) => '<button class="mail-account-item' + (mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : '') + '" data-id="' + a.id + '"><span class="ma-name" title="' + escapeHTML(a.email) + '">' + escapeHTML(a.name || a.email) + '</span><button class="ma-del" data-del="' + a.id + '" title="删除账户">×</button></button>').join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
-  }
+  if (!mailAccounts.length) wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
+  else wrap.innerHTML = mailAccounts.map((a) => '<button class="mail-account-item' + (mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : '') + '" data-id="' + a.id + '"><span class="ma-name" title="' + escapeHTML(a.email) + '">' + escapeHTML(a.name || a.email) + '</span><button class="ma-del" data-del="' + a.id + '" title="删除账户">×</button></button>').join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
   wrap.querySelectorAll('.mail-account-item').forEach((item) => {
-    item.addEventListener('click', (e) => {
-      if (e.target.closest('[data-del]')) return;
-      mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id);
-      renderMailAccounts();
-      loadMailFolders();
-    });
+    item.addEventListener('click', (e) => { if (e.target.closest('[data-del]')) return; mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id); renderMailAccounts(); loadMailFolders(); });
   });
   wrap.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -920,15 +918,7 @@ async function loadMailFolders() {
 function renderMailFolders() {
   const wrap = $('#mail-folders');
   const folders = mailFoldersData.folders || [];
-  const rank = (p) => {
-    const l = p.toLowerCase();
-    if (l === 'inbox') return 0;
-    if (/(junk|spam|垃圾)/.test(l)) return 1;
-    if (/(trash|deleted|已删除|回收站)/.test(l)) return 3;
-    if (/(sent|已发送)/.test(l)) return 4;
-    if (/(draft|草稿)/.test(l)) return 5;
-    return 2;
-  };
+  const rank = (p) => { const l = p.toLowerCase(); if (l === 'inbox') return 0; if (/(junk|spam|垃圾)/.test(l)) return 1; if (/(trash|deleted|已删除|回收站)/.test(l)) return 3; if (/(sent|已发送)/.test(l)) return 4; if (/(draft|草稿)/.test(l)) return 5; return 2; };
   const sorted = folders.slice().sort((a, b) => rank(a.path) - rank(b.path));
   const ICO = {
     inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
@@ -965,20 +955,11 @@ async function loadMailList(clearRead = false) {
   try {
     const data = await api('/api/mail/list?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder));
     loadingEl.hidden = true;
-    if (!data.items || !data.items.length) {
-      emptyEl.hidden = false;
-      emptyEl.textContent = '该文件夹暂无邮件';
-      listEl.innerHTML = '';
-      return;
-    }
+    if (!data.items || !data.items.length) { emptyEl.hidden = false; emptyEl.textContent = '该文件夹暂无邮件'; listEl.innerHTML = ''; return; }
     listEl.innerHTML = data.items.map((m) => '<button class="mail-item' + (m.seen ? '' : ' unseen') + (m.uid === mailCurrentUid ? ' active' : '') + '" data-uid="' + m.uid + '"><div class="mi-from"><span>' + escapeHTML(m.fromName || m.fromAddr || '(未知发件人)') + '</span>' + (m.flags && m.flags.includes('\\Flagged') ? '<span class="mi-flag">★</span>' : '') + '<span class="mi-date">' + fmtMailTime(m.date) + '</span></div><div class="mi-subject">' + escapeHTML(m.subject) + '</div><div class="mi-preview">' + escapeHTML((m.fromAddr || '') + ' · ' + fmtSize(m.size)) + '</div></button>').join('');
     listEl.querySelectorAll('.mail-item').forEach((b) => b.addEventListener('click', () => readMail(Number(b.dataset.uid))));
     updateMailBadge();
-  } catch (e) {
-    loadingEl.hidden = true;
-    emptyEl.hidden = false;
-    emptyEl.textContent = '加载失败：' + e.message;
-  }
+  } catch (e) { loadingEl.hidden = true; emptyEl.hidden = false; emptyEl.textContent = '加载失败：' + e.message; }
 }
 
 async function readMail(uid) {
@@ -998,23 +979,16 @@ async function readMail(uid) {
     const item = document.querySelector('.mail-item[data-uid="' + uid + '"]');
     if (item) item.classList.remove('unseen');
     updateMailBadge();
-  } catch (e) {
-    $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">读取失败：' + escapeHTML(e.message) + '</div>';
-  }
+  } catch (e) { $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">读取失败：' + escapeHTML(e.message) + '</div>'; }
 }
 
 async function mailFlag(action) {
   if (!mailCurrentUid) return;
-  try {
-    await api('/api/mail/flag', { method: 'POST', body: { account: mailCurrentAccount.id, folder: mailCurrentFolder, uids: [mailCurrentUid], action } });
-    toast(action === 'spam' ? '已标记为垃圾邮件' : '已删除');
-    loadMailList(true);
-  } catch (e) { toast(e.message); }
+  try { await api('/api/mail/flag', { method: 'POST', body: { account: mailCurrentAccount.id, folder: mailCurrentFolder, uids: [mailCurrentUid], action } }); toast(action === 'spam' ? '已标记为垃圾邮件' : '已删除'); loadMailList(true); }
+  catch (e) { toast(e.message); }
 }
 
-function downloadAttachment(idx, msg) {
-  window.open('/api/mail/attachment?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder) + '&uid=' + mailCurrentUid + '&index=' + idx, '_blank');
-}
+function downloadAttachment(idx, msg) { window.open('/api/mail/attachment?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder) + '&uid=' + mailCurrentUid + '&index=' + idx, '_blank'); }
 
 function openComposeSheet(replyMsg) {
   const sel = $('#compose-account');
@@ -1063,6 +1037,7 @@ async function enterDashboard() {
 }
 
 (async function init() {
+  initTheme();
   buildSwatches();
   bindEvents();
   try {
