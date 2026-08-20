@@ -937,13 +937,16 @@ async function handleMailAPI(req, res, pathname, url, me) {
     if (!acc) return sendError(res, 404, '账户不存在');
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
     if (body.name !== undefined) acc.name = String(body.name || '').trim() || acc.email;
-    if (body.password !== undefined) acc.password = String(body.password || '');
+    // 密码留空时保留原密码，避免编辑表单未填密码导致清空
+    if (body.password !== undefined && body.password !== '') acc.password = String(body.password);
     if (body.imapHost !== undefined) acc.imapHost = String(body.imapHost || '').trim();
-    if (body.imapPort) acc.imapPort = Number(body.imapPort);
+    if (body.imapPort !== undefined) acc.imapPort = Number(body.imapPort) || acc.imapPort || 993;
     if (body.imapSecure !== undefined) acc.imapSecure = body.imapSecure !== false;
     if (body.smtpHost !== undefined) acc.smtpHost = String(body.smtpHost || '').trim();
-    if (body.smtpPort) acc.smtpPort = Number(body.smtpPort);
+    if (body.smtpPort !== undefined) acc.smtpPort = Number(body.smtpPort) || acc.smtpPort || 465;
     if (body.smtpSecure !== undefined) acc.smtpSecure = body.smtpSecure !== false;
+    // 邮箱地址允许修改（同步 lastUids 的 key 不变，因为 id 不变）
+    if (body.email !== undefined && body.email.trim()) acc.email = String(body.email).trim();
     writeJSON(MAIL_FILE, mailAccounts);
     return sendJSON(res, 200, mailAccSafe(acc));
   }
