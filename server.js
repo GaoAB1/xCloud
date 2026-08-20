@@ -577,6 +577,11 @@ function mailEnabled() { return !!(ImapFlow && nodemailer && simpleParser); }
 
 // 把 imapflow 错误转成可读信息（区分超时/认证/连接失败）
 function mailErrMsg(e, fallback) {
+  // imapflow 连接失败常抛 AggregateError：展开子错误逐个翻译
+  if (e && typeof e.errors !== 'undefined' && Array.isArray(e.errors) && e.errors.length) {
+    const parts = e.errors.slice(0, 3).map((sub) => mailErrMsg(sub, sub && sub.message ? sub.message : ''));
+    return parts.join('；');
+  }
   const code = e && e.code;
   const msg = (e && e.message) || '';
   const map = {
@@ -586,6 +591,7 @@ function mailErrMsg(e, fallback) {
     ECONNREFUSED: 'IMAP 服务器拒绝连接，请检查端口与加密方式',
     EHOSTUNREACH: '无法到达 IMAP 服务器，请检查地址或网络',
     ETIMEDOUT: '连接 IMAP 服务器超时，请检查地址或网络',
+    ENOTFOUND: 'IMAP 服务器域名无法解析，请检查地址',
   };
   if (code && map[code]) return map[code] + (msg ? `（${msg}）` : '');
   if (code === 'AUTHENTICATE_FAILED') return 'IMAP 认证失败，请检查邮箱密码或授权码';
@@ -630,7 +636,13 @@ async function mailTest(acc) {
     await c.connect();
     await c.logout();
     out.imap = true;
-  } catch (e) { out.error = 'IMAP: ' + (e.message || e); }
+  } catch (e) {
+    out.error = 'IMAP: ' + mailErrMsg(e, (e && e.message) || '连接失败');
+    const hp = parseHostPort(acc.imapHost, acc.imapSecure ? 993 : 143);
+    out.error += `（imapHost=${hp.host} imapPort=${hp.port} secure=${acc.imapSecure ? 'SSL' : 'STARTTLS'}）`;
+    // 自动诊断：尝试常见端口/加密组合，帮用户找到正确配置
+    out.diagnostics = await tryImapCombos(acc);
+  }
   try {
     const hp = parseHostPort(acc.smtpHost, acc.smtpSecure ? 465 : 587);
     const t = nodemailer.createTransport({
@@ -642,6 +654,32 @@ async function mailTest(acc) {
     out.smtp = true;
   } catch (e) { out.error = (out.error ? out.error + '；' : '') + 'SMTP: ' + (e.message || e); }
   return out;
+}
+
+// IMAP 连接诊断：依次尝试主流端口/加密组合，返回每种结果
+async function tryImapCombos(acc) {
+  const hp = parseHostPort(acc.imapHost, acc.imapSecure ? 993 : 143);
+  const combos = [
+    { port: 993, secure: true, label: '993 + SSL' },
+    { port: 143, secure: false, label: '143 + STARTTLS' },
+    { port: 143, secure: true, label: '143 + SSL(直连)' },
+  ];
+  // 用户当前配置优先尝试
+  const current = { port: hp.port, secure: !!acc.imapSecure, label: `当前配置(${hp.port} + ${acc.imapSecure ? 'SSL' : 'STARTTLS'})` };
+  const ordered = [current, ...combos.filter((c) => !(c.port === current.port && c.secure === current.secure))];
+  const results = [];
+  for (const combo of ordered) {
+    try {
+      const c = buildImapClient({ ...acc, imapHost: `${hp.host}`, imapPort: combo.port, imapSecure: combo.secure }, { verifyOnly: true });
+      await c.connect();
+      await c.logout();
+      results.push({ ...combo, ok: true, msg: '连接成功' });
+      break; // 找到可用配置，停止尝试
+    } catch (e2) {
+      results.push({ ...combo, ok: false, msg: mailErrMsg(e2, (e2 && e2.message) || '失败').slice(0, 60) });
+    }
+  }
+  return results;
 }
 
 // 列出文件夹（含垃圾邮件 Junk/Spam）

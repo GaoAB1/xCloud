@@ -1380,7 +1380,15 @@ function renderMailAccounts() {
     b.textContent = '…';
     try {
       const r = await api(`/api/mail/accounts/${id}?test=1`, { method: 'POST' });
-      toast(`IMAP: ${r.imap ? '✓ 正常' : '✗ 失败'}  SMTP: ${r.smtp ? '✓ 正常' : '✗ 失败'}${r.error ? '  ' + r.error : ''}`);
+      if (r.imap && r.smtp) {
+        toast(`✓ IMAP 正常  ✓ SMTP 正常`);
+      } else if (r.imap) {
+        toast(`✓ IMAP 正常  ✗ SMTP 失败：${r.error || ''}`);
+      } else if (r.diagnostics && r.diagnostics.length) {
+        showMailDiag(id, r);
+      } else {
+        toast(`✗ IMAP 失败：${r.error || '未知错误'}`);
+      }
     } catch (err) { toast('测试失败：' + err.message); }
     finally { b.disabled = false; b.textContent = orig; }
   }));
@@ -1398,6 +1406,47 @@ function renderMailAccounts() {
   }));
   const addBtn = $('#btn-add-mailaccount');
   if (addBtn) addBtn.addEventListener('click', () => openMailAccountSheet());
+}
+
+// 展示 IMAP 连接诊断结果（端口/加密组合尝试），支持一键应用正确配置
+function showMailDiag(accId, r) {
+  const acc = mailAccounts.find((a) => a.id === accId);
+  if (!acc) return;
+  const rows = (r.diagnostics || []).map((d) => `
+    <div class="diag-row ${d.ok ? 'ok' : 'fail'}">
+      <span class="diag-port">${escapeHTML(d.label)}</span>
+      <span class="diag-msg">${escapeHTML(d.msg)}</span>
+      ${d.ok ? '<span class="diag-badge">可用</span>' : ''}
+    </div>
+  `).join('');
+  const okOne = (r.diagnostics || []).find((d) => d.ok);
+  $('#mail-diag-body').innerHTML = `
+    <p class="diag-desc">当前 IMAP 配置连接失败（SMTP 正常）。以下是尝试常见端口/加密组合的结果：</p>
+    <div class="diag-list">${rows}</div>
+    ${okOne ? `
+      <div class="diag-apply">
+        <button class="btn-primary" id="btn-apply-diag" style="height:38px;font-size:13.5px;padding:0 16px">应用此配置 (${escapeHTML(okOne.label)})</button>
+        <span class="diag-hint">保存后重新测试</span>
+      </div>` : ''}
+    ${!okOne ? '<p class="diag-none">所有常见组合都失败——请检查 IMAP 服务器地址是否正确、邮箱服务商是否已开启 IMAP 服务、以及服务器防火墙是否放行 993/143 端口。</p>' : ''}
+    <p class="diag-err">错误详情：${escapeHTML(r.error || '')}</p>
+  `;
+  openSheet($('#mail-diag-sheet'));
+  const applyBtn = $('#btn-apply-diag');
+  if (applyBtn) applyBtn.addEventListener('click', async () => {
+    const newPort = okOne.port;
+    const newSecure = okOne.secure;
+    try {
+      await api(`/api/mail/accounts/${accId}`, {
+        method: 'PUT',
+        body: { imapPort: newPort, imapSecure: newSecure },
+      });
+      acc.imapPort = newPort;
+      acc.imapSecure = newSecure;
+      closeSheet();
+      toast('已更新 IMAP 配置，重新测试验证');
+    } catch (err) { toast('保存失败：' + err.message); }
+  });
 }
 
 async function loadMailFolders() {
