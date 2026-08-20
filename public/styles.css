@@ -52,8 +52,8 @@
 
   --track: #e8e8ed;
 
-  --max-grid: 1080px;
-  --pad-x: 22px;
+  --max-grid: 1320px;
+  --pad-x: 28px;
 
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
@@ -240,8 +240,10 @@ svg { display: block; }
 
 /* ═══════════════ 布局 ═══════════════ */
 .container {
-  max-width: var(--max-grid); margin: 0 auto;
+  width: 100%;
+  margin: 0 auto;
   padding: clamp(24px, 4vw, 44px) var(--pad-x) 60px;
+  max-width: 1600px;  /* 大屏软上限，避免 hero/天气拉得太开 */
 }
 
 /* 认证视图 */
@@ -579,9 +581,10 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
 
 /* ═══════════════ 文件（云盘）— iCloud 列表风格 ═══════════════ */
 .files-page {
-  max-width: var(--max-grid);
+  width: 100%;
   margin: 0 auto;
   padding: 8px var(--pad-x) 80px;
+  max-width: 1600px;  /* 大屏软上限，避免行宽过大难读 */
 }
 
 /* 侧栏 + 主区 */
@@ -592,10 +595,11 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
   position: relative;
 }
 
-/* 侧栏：顶部不超过顶栏（贴 top，与 navbar 齐平） */
+/* 侧栏：贴顶栏 + 高度自适应（撑满剩余视口），与主区等高 */
 .files-sidebar {
   position: sticky;
   top: 64px;               /* 顶栏高度 56 + 间距 */
+  align-self: stretch;     /* 在 flex 父级中撑到主区高度 */
   flex: 0 0 auto;
   width: 190px;
   display: flex;
@@ -607,6 +611,8 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
   border: 1px solid var(--hairline);
   box-shadow: var(--sh-card);
   overflow: hidden;
+  /* 自适应视口高度（视口 - 顶栏），保证短内容时也撑满屏幕等高 */
+  min-height: calc(100vh - 64px - 16px);
   transition: width .32s cubic-bezier(0.32, 0.72, 0, 1), opacity .25s ease, padding .32s cubic-bezier(0.32, 0.72, 0, 1), margin .32s cubic-bezier(0.32, 0.72, 0, 1), transform .32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 /* 折叠态：宽度收为 0 + 淡出 */
@@ -734,10 +740,28 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
   margin-bottom: 16px;
 }
 .files-actions-right { display: flex; gap: 8px; flex-shrink: 0; }
-.files-actions-bar .crumbs { font-size: 13px; }
+
+/* 面包屑 —— 苹果风（透明背景 / 灰色文字 / 当前项蓝色 / hover 浅灰） */
+.files-actions-bar .crumbs {
+  display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  min-width: 0; overflow: hidden;
+}
 .files-actions-bar .crumbs .crumb {
-  font-size: 13.5px; font-weight: 550;
-  padding: 4px 8px;
+  border: none; background: transparent; cursor: pointer;
+  font-size: 13.5px; font-weight: 500;
+  color: var(--text-2);
+  padding: 5px 9px; border-radius: 7px;
+  line-height: 1.3; white-space: nowrap;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+  transition: background .15s, color .15s;
+}
+.files-actions-bar .crumbs .crumb:hover { background: var(--hover); color: var(--text); }
+.files-actions-bar .crumbs .crumb.current {
+  color: var(--accent); font-weight: 600;
+}
+.files-actions-bar .crumbs .crumb.current:hover { background: transparent; }
+.files-actions-bar .crumbs .sep {
+  color: var(--text-4); font-size: 14px; padding: 0 1px; user-select: none;
 }
 
 /* 文件面板（容器） */
@@ -992,6 +1016,12 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
 }
 .mail-account-item .ma-test:hover { opacity: 1; background: rgba(255,255,255,0.2); }
 .mail-account-item .ma-test:disabled { opacity: 0.5; cursor: wait; }
+.mail-account-item .ma-edit {
+  width: 22px; height: 22px; border-radius: 6px; border: none; background: transparent;
+  color: inherit; cursor: pointer; font-size: 12px; opacity: 0.75; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mail-account-item .ma-edit:hover { opacity: 1; background: rgba(255,255,255,0.2); }
 .mail-account-item .ma-del {
   width: 22px; height: 22px; border-radius: 6px; border: none; background: transparent;
   color: inherit; cursor: pointer; font-size: 14px; opacity: 0.7; flex: none;
