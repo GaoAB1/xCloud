@@ -65,7 +65,7 @@
       </div>
     </section>
 
-    <!-- ════════════ 玻璃导航（主页 / 文件 / 邮件） ════════════ -->
+    <!-- ════════════ 玻璃导航（主页 / 文件 共享） ════════════ -->
     <header class="glass-nav" id="navbar" hidden>
       <div class="nav-inner">
         <div class="nav-brand">
@@ -490,6 +490,15 @@
         </div>
       </form>
     </div>
+  </div>
+
+  <!-- IMAP 连接诊断 sheet -->
+  <div class="sheet" id="mail-diag-sheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <h3>IMAP 连接诊断</h3>
+      <button class="icon-btn close-btn" data-close aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="sheet-body" id="mail-diag-body"></div>
   </div>
 
   <!-- Toast -->
