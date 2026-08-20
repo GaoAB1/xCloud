@@ -1409,9 +1409,28 @@ function renderMailAccounts() {
 }
 
 // 展示 IMAP 连接诊断结果（端口/加密组合尝试），支持一键应用正确配置
+// 弹窗由 JS 动态创建，不依赖 index.html 预置元素（避免部署不同步导致 null 报错）
 function showMailDiag(accId, r) {
   const acc = mailAccounts.find((a) => a.id === accId);
   if (!acc) return;
+  let sheet = $('#mail-diag-sheet');
+  if (!sheet) {
+    sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.id = 'mail-diag-sheet';
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-modal', 'true');
+    sheet.hidden = true;
+    sheet.innerHTML = `
+      <div class="sheet-head">
+        <h3>IMAP 连接诊断</h3>
+        <button class="icon-btn close-btn" data-close aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="sheet-body" id="mail-diag-body"></div>
+    `;
+    document.body.appendChild(sheet);
+    sheet.querySelector('.close-btn').addEventListener('click', closeSheet);
+  }
   const rows = (r.diagnostics || []).map((d) => `
     <div class="diag-row ${d.ok ? 'ok' : 'fail'}">
       <span class="diag-port">${escapeHTML(d.label)}</span>
@@ -1431,7 +1450,7 @@ function showMailDiag(accId, r) {
     ${!okOne ? '<p class="diag-none">所有常见组合都失败——请检查 IMAP 服务器地址是否正确、邮箱服务商是否已开启 IMAP 服务、以及服务器防火墙是否放行 993/143 端口。</p>' : ''}
     <p class="diag-err">错误详情：${escapeHTML(r.error || '')}</p>
   `;
-  openSheet($('#mail-diag-sheet'));
+  openSheet(sheet);
   const applyBtn = $('#btn-apply-diag');
   if (applyBtn) applyBtn.addEventListener('click', async () => {
     const newPort = okOne.port;
