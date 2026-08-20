@@ -446,8 +446,8 @@
       <div id="mailaccount-list"></div>
       <div class="divider"></div>
       <form id="mailaccount-form" novalidate>
-        <h4>添加账户</h4>
-        <p class="field-hint">支持 QQ / 163 / Gmail / Outlook / 企业邮箱等（使用邮箱授权码而非登录密码）。</p>
+        <h4 id="ma-h4">添加账户</h4>
+        <p class="field-hint" id="ma-hint">支持 QQ / 163 / Gmail / Outlook / 企业邮箱等（使用邮箱授权码而非登录密码）。</p>
         <div class="field">
           <span>显示名称</span>
           <input type="text" id="ma-name" placeholder="例如 工作邮箱" maxlength="32" />
@@ -457,8 +457,9 @@
           <input type="email" id="ma-email" placeholder="you@example.com" required />
         </div>
         <div class="field">
-          <span>邮箱授权码 / 密码</span>
-          <input type="password" id="ma-password" placeholder="IMAP/SMTP 授权码" required />
+          <span id="ma-pw-label">邮箱授权码 / 密码</span>
+          <input type="password" id="ma-password" placeholder="IMAP/SMTP 授权码" />
+          <p class="field-hint" id="ma-pw-hint" hidden>留空则保持原密码不变</p>
         </div>
         <div class="field-row">
           <div class="field grow">
@@ -466,15 +467,25 @@
             <input type="text" id="ma-imap" placeholder="imap.qq.com" required />
           </div>
           <div class="field grow">
-            <span>SMTP 服务器</span>
-            <input type="text" id="ma-smtp" placeholder="smtp.qq.com" required />
+            <span>IMAP 端口</span>
+            <input type="number" id="ma-imap-port" placeholder="993" min="1" max="65535" />
           </div>
         </div>
         <div class="field-row">
-          <label class="check"><input type="checkbox" id="ma-imap-ssl" checked /> IMAP 使用 SSL（端口 993）</label>
-          <label class="check"><input type="checkbox" id="ma-smtp-ssl" checked /> SMTP 使用 SSL（端口 465）</label>
+          <div class="field grow">
+            <span>SMTP 服务器</span>
+            <input type="text" id="ma-smtp" placeholder="smtp.qq.com" required />
+          </div>
+          <div class="field grow">
+            <span>SMTP 端口</span>
+            <input type="number" id="ma-smtp-port" placeholder="465" min="1" max="65535" />
+          </div>
         </div>
-        <div class="field">
+        <div class="field-row">
+          <label class="check"><input type="checkbox" id="ma-imap-ssl" checked /> IMAP 使用 SSL</label>
+          <label class="check"><input type="checkbox" id="ma-smtp-ssl" checked /> SMTP 使用 SSL</label>
+        </div>
+        <div class="field" id="ma-preset-wrap">
           <span>常见配置</span>
           <select id="ma-preset" onchange="applyMailPreset()">
             <option value="">手动输入</option>
@@ -486,7 +497,8 @@
         </div>
         <p class="field-error" id="ma-error" hidden></p>
         <div class="sheet-actions">
-          <button type="submit" class="btn-primary">保存账户</button>
+          <button type="button" class="btn-secondary" data-close>取消</button>
+          <button type="submit" class="btn-primary" id="ma-submit-btn">保存账户</button>
         </div>
       </form>
     </div>

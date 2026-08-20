@@ -746,32 +746,49 @@ function bindEvents() {
     });
     e.target.value = '';
   });
-  // 邮件账户表单
+  // 邮件账户表单（支持新建/编辑）
   $('#mailaccount-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('#ma-error');
     err.hidden = true;
+    const isEdit = !!editingAccId;
+    const body = {
+      name: $('#ma-name').value,
+      email: $('#ma-email').value.trim(),
+      imapHost: $('#ma-imap').value.trim(),
+      imapPort: Number($('#ma-imap-port').value) || 993,
+      imapSecure: $('#ma-imap-ssl').checked,
+      smtpHost: $('#ma-smtp').value.trim(),
+      smtpPort: Number($('#ma-smtp-port').value) || 465,
+      smtpSecure: $('#ma-smtp-ssl').checked,
+    };
+    const pw = $('#ma-password').value;
+    if (pw) body.password = pw;
+    if (!isEdit) body.password = pw; // 新建时必填
+    const submitBtn = $('#ma-submit-btn');
+    submitBtn.disabled = true;
     try {
-      await api('/api/mail/accounts', {
-        method: 'POST',
-        body: {
-          name: $('#ma-name').value,
-          email: $('#ma-email').value.trim(),
-          password: $('#ma-password').value,
-          imapHost: $('#ma-imap').value.trim(),
-          imapSecure: $('#ma-imap-ssl').checked,
-          smtpHost: $('#ma-smtp').value.trim(),
-          smtpSecure: $('#ma-smtp-ssl').checked,
-        },
-      });
-      closeSheet();
-      toast('账户已添加');
-      const data = await api('/api/mail/accounts');
-      mailAccounts = data.accounts || [];
-      mailCurrentAccount = mailAccounts[mailAccounts.length - 1] || null;
+      if (isEdit) {
+        await api(`/api/mail/accounts/${editingAccId}`, { method: 'PUT', body });
+        const data = await api('/api/mail/accounts');
+        mailAccounts = data.accounts || [];
+        const edited = mailAccounts.find((a) => a.id === editingAccId);
+        if (edited && mailCurrentAccount && mailCurrentAccount.id === editingAccId) mailCurrentAccount = edited;
+        closeSheet();
+        toast('账户已更新');
+      } else {
+        if (!pw) throw new Error('请填写邮箱授权码 / 密码');
+        await api('/api/mail/accounts', { method: 'POST', body });
+        closeSheet();
+        toast('账户已添加');
+        const data = await api('/api/mail/accounts');
+        mailAccounts = data.accounts || [];
+        mailCurrentAccount = mailAccounts[mailAccounts.length - 1] || null;
+      }
       renderMailAccounts();
       if (mailCurrentAccount) { await loadMailFolders(); await loadMailList(true); }
     } catch (msg) { showErr(err, msg.message); }
+    finally { submitBtn.disabled = false; }
   });
 
   // 导航滚动阴影
@@ -1295,14 +1312,22 @@ let mailCurrentFolder = 'INBOX';
 let mailCurrentUid = null;
 let mailTimer = null;
 const MAIL_PRESETS = {
-  qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' },
-  163: { imap: 'imap.163.com', smtp: 'smtp.163.com' },
-  gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' },
-  outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' },
+  qq: { imap: 'imap.qq.com', imapPort: 993, imapSsl: true, smtp: 'smtp.qq.com', smtpPort: 465, smtpSsl: true },
+  '163': { imap: 'imap.163.com', imapPort: 993, imapSsl: true, smtp: 'smtp.163.com', smtpPort: 465, smtpSsl: true },
+  gmail: { imap: 'imap.gmail.com', imapPort: 993, imapSsl: true, smtp: 'smtp.gmail.com', smtpPort: 465, smtpSsl: true },
+  outlook: { imap: 'outlook.office365.com', imapPort: 993, imapSsl: true, smtp: 'smtp.office365.com', smtpPort: 587, smtpSsl: false },
 };
+let editingAccId = null;
 function applyMailPreset() {
   const p = MAIL_PRESETS[$('#ma-preset').value];
-  if (p) { $('#ma-imap').value = p.imap; $('#ma-smtp').value = p.smtp; }
+  if (p) {
+    $('#ma-imap').value = p.imap;
+    $('#ma-imap-port').value = p.imapPort;
+    $('#ma-imap-ssl').checked = p.imapSsl;
+    $('#ma-smtp').value = p.smtp;
+    $('#ma-smtp-port').value = p.smtpPort;
+    $('#ma-smtp-ssl').checked = p.smtpSsl;
+  }
 }
 function fmtMailTime(ts) {
   if (!ts) return '';
@@ -1359,6 +1384,9 @@ function renderMailAccounts() {
         <span class="ma-name" title="${escapeHTML(a.email)}">${escapeHTML(a.name || a.email)}</span>
         <span class="ma-actions">
           <button class="ma-test" data-test="${a.id}" title="测试连接">测试</button>
+          <button class="ma-edit" data-edit="${a.id}" title="编辑账户">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+          </button>
           <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
         </span>
       </button>
@@ -1366,12 +1394,16 @@ function renderMailAccounts() {
   }
   wrap.querySelectorAll('.mail-account-item').forEach((item) => {
     item.addEventListener('click', (e) => {
-      if (e.target.closest('[data-del]') || e.target.closest('[data-test]')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-test]') || e.target.closest('[data-edit]')) return;
       mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id);
       renderMailAccounts();
       loadMailFolders();
     });
   });
+  wrap.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openMailAccountSheet(b.dataset.edit);
+  }));
   wrap.querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async (e) => {
     e.stopPropagation();
     const id = b.dataset.test;
@@ -1633,14 +1665,26 @@ function openComposeSheet(replyMsg) {
   openSheet($('#compose-sheet'));
 }
 
-function openMailAccountSheet() {
-  $('#ma-name').value = '';
-  $('#ma-email').value = '';
-  $('#ma-password').value = '';
-  $('#ma-imap').value = '';
-  $('#ma-smtp').value = '';
-  $('#ma-imap-ssl').checked = true;
-  $('#ma-smtp-ssl').checked = true;
+function openMailAccountSheet(accId) {
+  editingAccId = accId || null;
+  const acc = accId ? mailAccounts.find((a) => a.id === accId) : null;
+  // 标题/按钮动态切换
+  $('#ma-h4').textContent = acc ? '编辑账户' : '添加账户';
+  $('#ma-submit-btn').textContent = acc ? '保存修改' : '保存账户';
+  $('#ma-hint').hidden = !!acc;
+  $('#ma-preset-wrap').hidden = !!acc; // 编辑时不在用预设
+  $('#ma-pw-hint').hidden = !acc;
+  // 填充字段
+  $('#ma-name').value = acc ? (acc.name || '') : '';
+  $('#ma-email').value = acc ? (acc.email || '') : '';
+  $('#ma-password').value = '';  // 始终留空（编辑时留空=不改密码）
+  $('#ma-imap').value = acc ? (acc.imapHost || '') : '';
+  $('#ma-imap-port').value = acc ? (acc.imapPort || 993) : '';
+  $('#ma-imap-ssl').checked = acc ? !!acc.imapSecure : true;
+  $('#ma-smtp').value = acc ? (acc.smtpHost || '') : '';
+  $('#ma-smtp-port').value = acc ? (acc.smtpPort || 465) : '';
+  $('#ma-smtp-ssl').checked = acc ? !!acc.smtpSecure : true;
+  $('#ma-preset').value = '';
   $('#ma-error').hidden = true;
   openSheet($('#mailaccount-sheet'));
 }
