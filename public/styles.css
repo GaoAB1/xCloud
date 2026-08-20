@@ -595,7 +595,7 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
 /* 侧栏：顶部不超过顶栏（贴 top，与 navbar 齐平） */
 .files-sidebar {
   position: sticky;
-  top: 64px;
+  top: 64px;               /* 顶栏高度 56 + 间距 */
   flex: 0 0 auto;
   width: 190px;
   display: flex;
@@ -609,6 +609,7 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
   overflow: hidden;
   transition: width .32s cubic-bezier(0.32, 0.72, 0, 1), opacity .25s ease, padding .32s cubic-bezier(0.32, 0.72, 0, 1), margin .32s cubic-bezier(0.32, 0.72, 0, 1), transform .32s cubic-bezier(0.32, 0.72, 0, 1);
 }
+/* 折叠态：宽度收为 0 + 淡出 */
 .files-wrap.sidebar-collapsed .files-sidebar {
   width: 0;
   padding-left: 0;
@@ -847,7 +848,7 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
   letter-spacing: -0.005em;
   line-height: 1.4;
 }
-.file-name .file-kind-inline { display: none; }
+.file-name .file-kind-inline { display: none; } /* 移动端才显示 */
 
 /* 种类 / 大小 / 日期 / 操作列 */
 .file-kind {
@@ -984,6 +985,13 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
 .mail-account-item:hover { background: var(--hover); }
 .mail-account-item.active { background: var(--accent); color: #fff; }
 .mail-account-item .ma-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.mail-account-item .ma-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.mail-account-item .ma-test {
+  width: auto; height: 22px; padding: 0 7px; border-radius: 6px; border: none; background: transparent;
+  color: inherit; cursor: pointer; font-size: 11px; opacity: 0.75; flex: none;
+}
+.mail-account-item .ma-test:hover { opacity: 1; background: rgba(255,255,255,0.2); }
+.mail-account-item .ma-test:disabled { opacity: 0.5; cursor: wait; }
 .mail-account-item .ma-del {
   width: 22px; height: 22px; border-radius: 6px; border: none; background: transparent;
   color: inherit; cursor: pointer; font-size: 14px; opacity: 0.7; flex: none;
