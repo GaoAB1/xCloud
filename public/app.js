@@ -1357,18 +1357,33 @@ function renderMailAccounts() {
     wrap.innerHTML = mailAccounts.map((a) => `
       <button class="mail-account-item${mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : ''}" data-id="${a.id}">
         <span class="ma-name" title="${escapeHTML(a.email)}">${escapeHTML(a.name || a.email)}</span>
-        <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
+        <span class="ma-actions">
+          <button class="ma-test" data-test="${a.id}" title="测试连接">测试</button>
+          <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
+        </span>
       </button>
     `).join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
   }
   wrap.querySelectorAll('.mail-account-item').forEach((item) => {
     item.addEventListener('click', (e) => {
-      if (e.target.closest('[data-del]')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-test]')) return;
       mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id);
       renderMailAccounts();
       loadMailFolders();
     });
   });
+  wrap.querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const id = b.dataset.test;
+    b.disabled = true;
+    const orig = b.textContent;
+    b.textContent = '…';
+    try {
+      const r = await api(`/api/mail/accounts/${id}?test=1`, { method: 'POST' });
+      toast(`IMAP: ${r.imap ? '✓ 正常' : '✗ 失败'}  SMTP: ${r.smtp ? '✓ 正常' : '✗ 失败'}${r.error ? '  ' + r.error : ''}`);
+    } catch (err) { toast('测试失败：' + err.message); }
+    finally { b.disabled = false; b.textContent = orig; }
+  }));
   wrap.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async (e) => {
     e.stopPropagation();
     const id = b.dataset.del;

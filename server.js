@@ -574,6 +574,24 @@ async function handleCallback(req, res, url) {
 const MAIL = { client: null, pollTimer: null, lastUids: new Map() };
 
 function mailEnabled() { return !!(ImapFlow && nodemailer && simpleParser); }
+
+// 把 imapflow 错误转成可读信息（区分超时/认证/连接失败）
+function mailErrMsg(e, fallback) {
+  const code = e && e.code;
+  const msg = (e && e.message) || '';
+  const map = {
+    CONNECT_TIMEOUT: '连接 IMAP 服务器超时（15s），请检查服务器地址/端口/网络',
+    SOCKET_TIMEOUT: 'IMAP 响应超时（20s），服务器响应过慢',
+    AUTHENTICATE_FAILED: 'IMAP 认证失败，请检查邮箱密码或授权码',
+    ECONNREFUSED: 'IMAP 服务器拒绝连接，请检查端口与加密方式',
+    EHOSTUNREACH: '无法到达 IMAP 服务器，请检查地址或网络',
+    ETIMEDOUT: '连接 IMAP 服务器超时，请检查地址或网络',
+  };
+  if (code && map[code]) return map[code] + (msg ? `（${msg}）` : '');
+  if (code === 'AUTHENTICATE_FAILED') return 'IMAP 认证失败，请检查邮箱密码或授权码';
+  if (code === 'ENOTFOUND') return 'IMAP 服务器域名无法解析，请检查地址';
+  return (msg && msg.length < 200 ? msg : (fallback || '邮件操作失败'));
+}
 function mailAccSafe(a) {
   return { id: a.id, name: a.name, email: a.email, imapHost: a.imapHost, imapPort: a.imapPort, imapSecure: !!a.imapSecure, smtpHost: a.smtpHost, smtpPort: a.smtpPort, smtpSecure: !!a.smtpSecure };
 }
@@ -595,6 +613,11 @@ function buildImapClient(acc, opts) {
     secure: !!acc.imapSecure,
     auth: { user: acc.email, pass: acc.password },
     logger: false,
+    // 关键：缩短连接/套接字超时（imapflow 默认 90s），
+    // 避免超过 nginx proxy_read_timeout(60s) 导致网关层裸 502，
+    // 让应用层在 15s 内返回带错误详情的 JSON
+    connectionTimeout: 15000,
+    socketTimeout: 20000,
     ...(opts || {}),
   });
 }
@@ -652,8 +675,8 @@ async function mailFolders(acc) {
 // 读取某文件夹邮件列表（envelope，不含正文，快）
 async function mailList(acc, folder, range) {
   const c = buildImapClient(acc);
-  await c.connect();
   try {
+    await c.connect();
     const lock = await c.getMailboxLock(folder || 'INBOX');
     try {
       const total = c.mailbox.exists || 0;
@@ -682,6 +705,9 @@ async function mailList(acc, folder, range) {
       items.sort((a, b) => b.uid - a.uid);
       return { total, uidNext, items };
     } finally { lock.release(); }
+  } catch (e) {
+    console.error('[mail] list 失败:', acc.email, folder, e && e.code ? e.code : '', e && e.message ? e.message : e);
+    throw e;
   } finally {
     try { await c.logout(); } catch { /* ignore */ }
   }
@@ -891,6 +917,13 @@ async function handleMailAPI(req, res, pathname, url, me) {
     writeJSON(MAIL_FILE, mailAccounts);
     return sendJSON(res, 200, { ok: true });
   }
+  // 测试已存账户的连接（IMAP + SMTP），用于排查 502
+  if (accMatch && req.method === 'POST' && url.searchParams.get('test') === '1') {
+    const acc = mailFind(accMatch[1]);
+    if (!acc) return sendError(res, 404, '账户不存在');
+    try { return sendJSON(res, 200, await mailTest(acc)); }
+    catch (e) { return sendError(res, 502, mailErrMsg(e, '测试连接失败')); }
+  }
 
   // 需要账户 ID 的操作
   const accId = url.searchParams.get('account');
@@ -906,7 +939,7 @@ async function handleMailAPI(req, res, pathname, url, me) {
     const folder = url.searchParams.get('folder') || 'INBOX';
     const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
     try { return sendJSON(res, 200, await mailList(acc, folder, { from: (page - 1) * 50 + 1, to: page * 50 })); }
-    catch (e) { return sendError(res, 502, e.message || '获取邮件失败'); }
+    catch (e) { return sendError(res, 502, mailErrMsg(e, '获取邮件失败')); }
   }
   if (pathname === '/api/mail/read' && req.method === 'GET') {
     const folder = url.searchParams.get('folder') || 'INBOX';
