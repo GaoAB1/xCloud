@@ -11,11 +11,12 @@ let currentUser = null;
 let currentApps = [];
 let networkMode = localStorage.getItem('panel_network') || 'internal';
 let editingAppId = null;
-let appImageDataURL = null;
+let appImageDataURL = null; // 应用图标新上传的 dataURL
 let weatherUnit = 'c';
 
 const PALETTE = ['#0071e3', '#5e5ce6', '#0a84ff', '#30d158', '#34c759', '#ff9500', '#ff3b30', '#ff2d55', '#af52de', '#5856d6', '#64d2ff', '#a2845e'];
 
+/* ── 基础工具 ──────────────────────────────────────────────────── */
 function escapeHTML(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -26,7 +27,10 @@ async function api(path, opts = {}) {
     headers: opts.body ? { 'Content-Type': 'application/json' } : {},
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401 && path !== '/api/status') { showView('login'); throw new Error('未登录'); }
+  if (res.status === 401 && path !== '/api/status') {
+    showView('login');
+    throw new Error('未登录');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '请求失败');
   return data;
@@ -51,19 +55,29 @@ function showView(name) {
   $('#view-mail').hidden = name !== 'mail';
 }
 
-function setSegActive(seg, activeBtn) { seg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === activeBtn)); }
+function setSegActive(seg, activeBtn) {
+  seg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === activeBtn));
+}
 
+/* ── 头像渲染 ──────────────────────────────────────────────────── */
 function avatarHTML(user, cls = 'avatar') {
-  if (user && user.avatar) return `<span class="${cls}"><img src="/uploads/${escapeHTML(user.avatar)}" alt=""></span>`;
+  if (user && user.avatar) {
+    return `<span class="${cls}"><img src="/uploads/${escapeHTML(user.avatar)}" alt=""></span>`;
+  }
   const letter = (user && (user.name || user.username || '?'))[0] || '?';
   return `<span class="${cls}">${escapeHTML(letter.toUpperCase())}</span>`;
 }
 
 function renderAvatars() {
-  $('#nav-avatar').innerHTML = currentUser && currentUser.avatar ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">` : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
-  $('#profile-avatar').innerHTML = currentUser && currentUser.avatar ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">` : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
+  $('#nav-avatar').innerHTML = currentUser && currentUser.avatar
+    ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">`
+    : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
+  $('#profile-avatar').innerHTML = currentUser && currentUser.avatar
+    ? `<img src="/uploads/${escapeHTML(currentUser.avatar)}" alt="">`
+    : escapeHTML(((currentUser && currentUser.name) || '?')[0].toUpperCase());
 }
 
+/* ── 时钟 ──────────────────────────────────────────────────────── */
 function startClock() {
   const week = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
   const update = () => {
@@ -76,6 +90,7 @@ function startClock() {
   setInterval(update, 1000);
 }
 
+/* ── 天气 ──────────────────────────────────────────────────────── */
 const WMO = {
   0: { l: '晴', e: '☀️' }, 1: { l: '大部晴朗', e: '🌤️' }, 2: { l: '多云', e: '⛅' }, 3: { l: '阴', e: '☁️' },
   45: { l: '雾', e: '🌫️' }, 48: { l: '雾凇', e: '🌫️' },
@@ -88,7 +103,11 @@ const WMO = {
   85: { l: '阵雪', e: '🌨️' }, 86: { l: '阵雪', e: '🌨️' },
   95: { l: '雷暴', e: '⛈️' }, 96: { l: '雷暴伴冰雹', e: '⛈️' }, 99: { l: '雷暴伴冰雹', e: '⛈️' },
 };
-function weatherInfo(code, isDay) { const w = WMO[code] || { l: '未知', e: '🌡️' }; if (isDay === 0 && (code === 0 || code === 1)) w.e = code === 0 ? '🌙' : '☁️'; return w; }
+function weatherInfo(code, isDay) {
+  const w = WMO[code] || { l: '未知', e: '🌡️' };
+  if (isDay === 0 && (code === 0 || code === 1)) w.e = code === 0 ? '🌙' : '☁️';
+  return w;
+}
 function deg(t) { return Math.round(t); }
 function renderWeather(w) {
   const cur = w.current || {};
@@ -101,18 +120,51 @@ function renderWeather(w) {
   days.slice(0, 6).forEach((t, i) => {
     const d = new Date(t + 'T00:00:00');
     const fc = weatherInfo(daily.weather_code && daily.weather_code[i], 1);
-    forecastHTML += `<div class="forecast-day"><div class="d">${i === 0 ? '今天' : '周' + week[d.getDay()]}</div><div class="ic">${fc.e}</div><div class="t">${deg(daily.temperature_2m_max[i])}° <span>${deg(daily.temperature_2m_min[i])}°</span></div></div>`;
+    forecastHTML += `
+      <div class="forecast-day">
+        <div class="d">${i === 0 ? '今天' : '周' + week[d.getDay()]}</div>
+        <div class="ic">${fc.e}</div>
+        <div class="t">${deg(daily.temperature_2m_max[i])}° <span>${deg(daily.temperature_2m_min[i])}°</span></div>
+      </div>`;
   });
-  $('#weather-panel').innerHTML = `<div class="weather-top"><div class="weather-icon">${info.e}</div><div><div class="weather-temp">${deg(cur.temperature_2m)}<sup>${unit}</sup></div><div class="weather-cond">${info.l}</div><div class="weather-loc">${escapeHTML(w.location || '')}</div></div></div><div class="weather-meta"><span class="m">体感 <b>${deg(cur.apparent_temperature)}°</b></span><span class="m">湿度 <b>${cur.relative_humidity_2m}%</b></span><span class="m">风速 <b>${cur.wind_speed_10m} km/h</b></span></div><div class="weather-forecast">${forecastHTML}</div>`;
+  $('#weather-panel').innerHTML = `
+    <div class="weather-top">
+      <div class="weather-icon">${info.e}</div>
+      <div>
+        <div class="weather-temp">${deg(cur.temperature_2m)}<sup>${unit}</sup></div>
+        <div class="weather-cond">${info.l}</div>
+        <div class="weather-loc">${escapeHTML(w.location || '')}</div>
+      </div>
+    </div>
+    <div class="weather-meta">
+      <span class="m">体感 <b>${deg(cur.apparent_temperature)}°</b></span>
+      <span class="m">湿度 <b>${cur.relative_humidity_2m}%</b></span>
+      <span class="m">风速 <b>${cur.wind_speed_10m} km/h</b></span>
+    </div>
+    <div class="weather-forecast">${forecastHTML}</div>`;
 }
 
-async function loadWeather() { try { const w = await api('/api/weather'); renderWeather(w); } catch (e) { $('#weather-panel').innerHTML = '<div class="weather-loading">天气暂时不可用</div>'; } }
+async function loadWeather() {
+  try {
+    const w = await api('/api/weather');
+    renderWeather(w);
+  } catch (e) {
+    $('#weather-panel').innerHTML = '<div class="weather-loading">天气暂时不可用</div>';
+  }
+}
 
+/* ── 应用网格 ──────────────────────────────────────────────────── */
 function appIconHTML(app, sizeClass) {
   const cls = sizeClass ? `app-icon ${sizeClass}` : 'app-icon';
-  if (app.icon_type === 'emoji') return `<div class="${cls}" style="background:var(--hover); box-shadow:none">${escapeHTML(app.icon_value)}</div>`;
-  if (app.icon_type === 'image') return `<div class="${cls}"><img src="/uploads/${escapeHTML(app.icon_value)}" alt=""></div>`;
-  if (app.icon_type === 'url') return `<div class="${cls}"><img src="${escapeHTML(app.icon_value)}" alt="" loading="lazy"></div>`;
+  if (app.icon_type === 'emoji') {
+    return `<div class="${cls}" style="background:var(--hover); box-shadow:none">${escapeHTML(app.icon_value)}</div>`;
+  }
+  if (app.icon_type === 'image') {
+    return `<div class="${cls}"><img src="/uploads/${escapeHTML(app.icon_value)}" alt=""></div>`;
+  }
+  if (app.icon_type === 'url') {
+    return `<div class="${cls}"><img src="${escapeHTML(app.icon_value)}" alt="" loading="lazy"></div>`;
+  }
   const letter = (app.name || '?')[0];
   return `<div class="${cls}" style="background:${escapeHTML(app.color || '#0071e3')}">${escapeHTML(letter.toUpperCase())}</div>`;
 }
@@ -125,34 +177,74 @@ function renderApps() {
     const tag = url ? 'a' : 'div';
     const tile = document.createElement(tag);
     tile.className = 'app-tile' + (url ? '' : ' muted');
-    if (url) { tile.href = url; tile.target = '_blank'; tile.rel = 'noopener noreferrer'; tile.title = `${app.name}\n${url}`; }
-    else { tile.title = `${app.name}：未配置${networkMode === 'internal' ? '内网' : '外网'}地址`; }
+    if (url) {
+      tile.href = url; tile.target = '_blank'; tile.rel = 'noopener noreferrer';
+      tile.title = `${app.name}\n${url}`;
+    } else {
+      tile.title = `${app.name}：未配置${networkMode === 'internal' ? '内网' : '外网'}地址`;
+    }
     tile.innerHTML = `${appIconHTML(app)}<span class="app-name">${escapeHTML(app.name)}</span>`;
-    if (!url) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = '未配置'; tile.appendChild(b); }
+    if (!url) {
+      const b = document.createElement('span');
+      b.className = 'badge'; b.textContent = '未配置';
+      tile.appendChild(b);
+    }
     grid.appendChild(tile);
   });
   $('#apps-empty').hidden = currentApps.length > 0;
 }
 
-async function loadApps() { const data = await api('/api/apps'); currentApps = data.apps; renderApps(); }
+async function loadApps() {
+  const data = await api('/api/apps');
+  currentApps = data.apps;
+  renderApps();
+}
 
+/* ── 用户下拉菜单 ──────────────────────────────────────────────── */
 function togglePopover() {
   const pop = $('#user-popover');
   if (!pop.hidden) { pop.hidden = true; return; }
-  pop.innerHTML = `<div class="pop-user">${avatarHTML(currentUser)}<div><div class="pop-name">${escapeHTML(currentUser.name || currentUser.username)}</div><div class="pop-sub">@${escapeHTML(currentUser.username)}</div></div></div><button class="pop-item" data-act="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>账户设置</button><button class="pop-item danger" data-act="logout"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</button>`;
+  pop.innerHTML = `
+    <div class="pop-user">
+      ${avatarHTML(currentUser)}
+      <div>
+        <div class="pop-name">${escapeHTML(currentUser.name || currentUser.username)}</div>
+        <div class="pop-sub">@${escapeHTML(currentUser.username)}</div>
+      </div>
+    </div>
+    <button class="pop-item" data-act="settings">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      账户设置
+    </button>
+    <button class="pop-item danger" data-act="logout">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      退出登录
+    </button>`;
   pop.hidden = false;
   const rect = $('#user-chip').getBoundingClientRect();
   pop.style.top = `${rect.bottom + 8}px`;
   pop.style.right = `${window.innerWidth - rect.right}px`;
 }
 
+/* ── 弹层 ──────────────────────────────────────────────────────── */
 let activeSheet = null;
-function openSheet(el) { el.hidden = false; $('#scrim').hidden = false; activeSheet = el; document.body.style.overflow = 'hidden'; }
-function closeSheet() { if (activeSheet) activeSheet.hidden = true; activeSheet = null; $('#scrim').hidden = true; document.body.style.overflow = ''; }
+function openSheet(el) {
+  el.hidden = false;
+  $('#scrim').hidden = false;
+  activeSheet = el;
+  document.body.style.overflow = 'hidden';
+}
+function closeSheet() {
+  if (activeSheet) activeSheet.hidden = true;
+  activeSheet = null;
+  $('#scrim').hidden = true;
+  document.body.style.overflow = '';
+}
 $$('.close-btn, [data-close]').forEach((b) => b.addEventListener('click', closeSheet));
 $('#scrim').addEventListener('click', closeSheet);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeSheet(); $('#user-popover').hidden = true; } });
 
+/* ── 应用编辑表单 ──────────────────────────────────────────────── */
 function buildSwatches() {
   const wrap = $('#color-swatches');
   wrap.innerHTML = '';
@@ -161,21 +253,38 @@ function buildSwatches() {
     s.className = 'swatch' + (i === 0 ? ' active' : '');
     s.style.background = c;
     s.dataset.color = c;
-    s.addEventListener('click', () => { $$('#color-swatches .swatch').forEach((x) => x.classList.remove('active')); s.classList.add('active'); updateIconPreview(); });
+    s.addEventListener('click', () => {
+      $$('#color-swatches .swatch').forEach((x) => x.classList.remove('active'));
+      s.classList.add('active');
+      updateIconPreview();
+    });
     wrap.appendChild(s);
   });
 }
 
-function selectedColor() { const s = $('#color-swatches .swatch.active'); return s ? s.dataset.color : PALETTE[0]; }
+function selectedColor() {
+  const s = $('#color-swatches .swatch.active');
+  return s ? s.dataset.color : PALETTE[0];
+}
 
 function updateIconPreview() {
   const type = $$('input[name="icon_type"]').find((r) => r.checked).value;
   const name = $('#app-name').value.trim() || '?';
   const preview = $('#icon-preview');
-  if (type === 'emoji') { preview.innerHTML = escapeHTML($('#app-emoji').value.trim() || '😀'); preview.style.background = 'var(--hover)'; }
-  else if (type === 'image') { preview.innerHTML = appImageDataURL ? `<img src="${appImageDataURL}" alt="">` : '<span style="opacity:.5;font-size:16px">图</span>'; preview.style.background = appImageDataURL ? 'transparent' : 'var(--hover)'; }
-  else if (type === 'url') { const u = $('#app-iconurl').value.trim(); preview.innerHTML = u ? `<img src="${escapeHTML(u)}" alt="">` : '<span style="opacity:.5;font-size:16px">链</span>'; preview.style.background = u ? 'transparent' : 'var(--hover)'; }
-  else { preview.innerHTML = escapeHTML(name[0] ? name[0].toUpperCase() : '?'); preview.style.background = selectedColor(); }
+  if (type === 'emoji') {
+    preview.innerHTML = escapeHTML($('#app-emoji').value.trim() || '😀');
+    preview.style.background = 'var(--hover)';
+  } else if (type === 'image') {
+    preview.innerHTML = appImageDataURL ? `<img src="${appImageDataURL}" alt="">` : '<span style="opacity:.5;font-size:16px">图</span>';
+    preview.style.background = appImageDataURL ? 'transparent' : 'var(--hover)';
+  } else if (type === 'url') {
+    const u = $('#app-iconurl').value.trim();
+    preview.innerHTML = u ? `<img src="${escapeHTML(u)}" alt="">` : '<span style="opacity:.5;font-size:16px">链</span>';
+    preview.style.background = u ? 'transparent' : 'var(--hover)';
+  } else {
+    preview.innerHTML = escapeHTML(name[0] ? name[0].toUpperCase() : '?');
+    preview.style.background = selectedColor();
+  }
 }
 
 function openAppSheet(app) {
@@ -191,7 +300,10 @@ function openAppSheet(app) {
   $('#app-image').value = '';
   const type = (app && app.icon_type) || 'letter';
   $$('input[name="icon_type"]').forEach((r) => { r.checked = r.value === type; });
-  if (type === 'image' && app && app.icon_value && !app.icon_value.startsWith('data:')) appImageDataURL = `/uploads/${app.icon_value}`;
+  // 若编辑 image 类型，保留原图（icon_value 为文件名，非 dataURL）
+  if (type === 'image' && app && app.icon_value && !app.icon_value.startsWith('data:')) {
+    appImageDataURL = `/uploads/${app.icon_value}`;
+  }
   syncIconFields();
   updateIconPreview();
   openSheet($('#app-sheet'));
@@ -209,32 +321,45 @@ function syncIconFields() {
 
 async function submitApp(e) {
   e.preventDefault();
-  const err = $('#app-error'); err.hidden = true;
+  const err = $('#app-error');
+  err.hidden = true;
   const name = $('#app-name').value.trim();
   const internal = $('#app-internal').value.trim();
   const external = $('#app-external').value.trim();
   const type = $$('input[name="icon_type"]').find((r) => r.checked).value;
-  if (!name) return showErr(err, '请填写名称');
-  if (!internal && !external) return showErr(err, '请至少填写一个地址');
+  if (!name) { return showErr(err, '请填写名称'); }
+  if (!internal && !external) { return showErr(err, '请至少填写一个地址'); }
+
   let icon_value = '';
   if (type === 'letter') icon_value = '';
   else if (type === 'emoji') icon_value = $('#app-emoji').value.trim();
   else if (type === 'url') icon_value = $('#app-iconurl').value.trim();
   else if (type === 'image') {
     if (appImageDataURL && appImageDataURL.startsWith('data:')) icon_value = appImageDataURL;
-    else if (editingAppId) { const old = currentApps.find((a) => a.id === editingAppId); if (old && old.icon_type === 'image') icon_value = old.icon_value; }
+    else if (editingAppId) {
+      const old = currentApps.find((a) => a.id === editingAppId);
+      if (old && old.icon_type === 'image') icon_value = old.icon_value;
+    }
   }
-  const body = { name, url_internal: internal, url_external: external, icon_type: type, icon_value, color: type === 'letter' ? selectedColor() : '#0071e3' };
+
+  const body = {
+    name, url_internal: internal, url_external: external,
+    icon_type: type, icon_value,
+    color: type === 'letter' ? selectedColor() : '#0071e3',
+  };
   try {
     if (editingAppId) await api(`/api/apps/${editingAppId}`, { method: 'PUT', body });
     else await api('/api/apps', { method: 'POST', body });
     closeSheet();
     await loadApps();
     toast('已保存');
-  } catch (errMsg) { showErr(err, errMsg.message); }
+  } catch (errMsg) {
+    showErr(err, errMsg.message);
+  }
 }
 function showErr(el, msg) { el.textContent = msg; el.hidden = false; }
 
+/* ── 管理列表（拖拽排序） ──────────────────────────────────────── */
 function renderManageList() {
   const ul = $('#manage-list');
   ul.innerHTML = '';
@@ -246,15 +371,28 @@ function renderManageList() {
     const urls = [];
     if (app.url_internal) urls.push('内 ' + app.url_internal);
     if (app.url_external) urls.push('外 ' + app.url_external);
-    li.innerHTML = `<span class="drag-handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>${appIconHTML(app, '')}<div class="mi-info"><div class="mi-name">${escapeHTML(app.name)}</div><div class="mi-urls">${escapeHTML(urls.join('  ·  ') || '未配置地址')}</div></div><div class="mi-actions"><button class="icon-btn" data-edit title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button><button class="icon-btn" data-del title="删除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button></div>`;
+    li.innerHTML = `
+      <span class="drag-handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
+      ${appIconHTML(app, '')}
+      <div class="mi-info">
+        <div class="mi-name">${escapeHTML(app.name)}</div>
+        <div class="mi-urls">${escapeHTML(urls.join('  ·  ') || '未配置地址')}</div>
+      </div>
+      <div class="mi-actions">
+        <button class="icon-btn" data-edit title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        <button class="icon-btn" data-del title="删除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>
+      </div>`;
     ul.appendChild(li);
   });
+
+  // 拖拽排序
   let dragged = null;
   ul.querySelectorAll('.manage-item').forEach((item) => {
     item.addEventListener('dragstart', () => { dragged = item; item.classList.add('dragging'); });
     item.addEventListener('dragend', async () => {
       item.classList.remove('dragging');
       const order = $$('#manage-list .manage-item').map((x) => x.dataset.id);
+      // 更新本地顺序
       const map = new Map(currentApps.map((a) => [a.id, a]));
       currentApps = order.map((id) => map.get(id)).filter(Boolean);
       renderApps();
@@ -268,16 +406,26 @@ function renderManageList() {
       ul.insertBefore(dragged, after ? item.nextSibling : item);
     });
   });
-  ul.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { const app = currentApps.find((a) => a.id === b.closest('.manage-item').dataset.id); closeSheet(); openAppSheet(app); }));
+
+  ul.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+    const app = currentApps.find((a) => a.id === b.closest('.manage-item').dataset.id);
+    closeSheet();
+    openAppSheet(app);
+  }));
   ul.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const li = b.closest('.manage-item');
     const app = currentApps.find((a) => a.id === li.dataset.id);
     if (!confirm(`删除应用「${app.name}」？`)) return;
-    try { await api(`/api/apps/${app.id}`, { method: 'DELETE' }); await loadApps(); renderManageList(); toast('已删除'); }
-    catch (e) { toast(e.message); }
+    try {
+      await api(`/api/apps/${app.id}`, { method: 'DELETE' });
+      await loadApps();
+      renderManageList();
+      toast('已删除');
+    } catch (e) { toast(e.message); }
   }));
 }
 
+/* ── 图片处理 ──────────────────────────────────────────────────── */
 function processImage(file, maxSize) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -296,10 +444,13 @@ function processImage(file, maxSize) {
   });
 }
 
+/* ── 事件绑定 ──────────────────────────────────────────────────── */
 function bindEvents() {
+  // 首次设置
   $('#setup-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#setup-error'); err.hidden = true;
+    const err = $('#setup-error');
+    err.hidden = true;
     const username = $('#setup-username').value.trim();
     const name = $('#setup-name').value.trim();
     const p1 = $('#setup-password').value;
@@ -307,23 +458,37 @@ function bindEvents() {
     if (!username) return showErr(err, '请填写用户名');
     if (p1.length < 6) return showErr(err, '密码至少 6 位');
     if (p1 !== p2) return showErr(err, '两次输入的密码不一致');
-    const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true;
-    try { currentUser = await api('/api/setup', { method: 'POST', body: { username, name, password: p1 } }); toast('账户已创建'); enterDashboard(); }
-    catch (msg) { showErr(err, msg.message); }
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      currentUser = await api('/api/setup', { method: 'POST', body: { username, name, password: p1 } });
+      toast('账户已创建');
+      enterDashboard();
+    } catch (msg) { showErr(err, msg.message); }
     btn.disabled = false;
   });
 
+  // 登录
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#login-error'); err.hidden = true;
-    const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true;
-    try { currentUser = await api('/api/login', { method: 'POST', body: { username: $('#login-username').value.trim(), password: $('#login-password').value } }); enterDashboard(); }
-    catch (msg) { showErr(err, msg.message); }
+    const err = $('#login-error');
+    err.hidden = true;
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      currentUser = await api('/api/login', {
+        method: 'POST',
+        body: { username: $('#login-username').value.trim(), password: $('#login-password').value },
+      });
+      enterDashboard();
+    } catch (msg) { showErr(err, msg.message); }
     btn.disabled = false;
   });
 
+  // 网络切换
   $('#network-seg').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
+    const b = e.target.closest('button');
+    if (!b) return;
     networkMode = b.dataset.net;
     localStorage.setItem('panel_network', networkMode);
     setSegActive($('#network-seg'), b);
@@ -331,99 +496,162 @@ function bindEvents() {
     renderApps();
   });
 
+  // 用户菜单
   $('#user-chip').addEventListener('click', togglePopover);
-  document.addEventListener('click', (e) => { if (!e.target.closest('#user-popover') && !e.target.closest('#user-chip')) $('#user-popover').hidden = true; });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#user-popover') && !e.target.closest('#user-chip')) {
+      $('#user-popover').hidden = true;
+    }
+  });
   $('#user-popover').addEventListener('click', (e) => {
-    const item = e.target.closest('[data-act]'); if (!item) return;
+    const item = e.target.closest('[data-act]');
+    if (!item) return;
     $('#user-popover').hidden = true;
     if (item.dataset.act === 'settings') openSettings();
     else if (item.dataset.act === 'logout') doLogout();
   });
 
+  // 应用按钮
   $('#btn-add').addEventListener('click', () => openAppSheet(null));
   $('#btn-manage').addEventListener('click', () => { renderManageList(); openSheet($('#manage-sheet')); });
   $('#app-form').addEventListener('submit', submitApp);
 
+  // 图标类型切换
   $$('input[name="icon_type"]').forEach((r) => r.addEventListener('change', () => { syncIconFields(); updateIconPreview(); }));
   $('#app-name').addEventListener('input', updateIconPreview);
   $('#app-emoji').addEventListener('input', updateIconPreview);
   $('#app-iconurl').addEventListener('input', updateIconPreview);
-  $('#app-image').addEventListener('change', async (e) => { const f = e.target.files[0]; if (!f) return; try { appImageDataURL = await processImage(f, 256); updateIconPreview(); } catch (msg) { toast(msg.message); } });
+  $('#app-image').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try { appImageDataURL = await processImage(f, 256); updateIconPreview(); } catch (msg) { toast(msg.message); }
+  });
 
+  // 设置
   $('#profile-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { currentUser = await api('/api/profile', { method: 'POST', body: { name: $('#profile-name').value.trim() } }); renderAvatars(); toast('名称已更新'); }
-    catch (msg) { toast(msg.message); }
+    try {
+      currentUser = await api('/api/profile', { method: 'POST', body: { name: $('#profile-name').value.trim() } });
+      renderAvatars();
+      toast('名称已更新');
+    } catch (msg) { toast(msg.message); }
   });
 
   $('#btn-upload-avatar').addEventListener('click', () => $('#avatar-file').click());
   $('#avatar-file').addEventListener('change', async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    try { const data = await processImage(f, 512); currentUser = await api('/api/profile', { method: 'POST', body: { avatar: data } }); renderAvatars(); toast('头像已更新'); }
-    catch (msg) { toast(msg.message); }
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const data = await processImage(f, 512);
+      currentUser = await api('/api/profile', { method: 'POST', body: { avatar: data } });
+      renderAvatars();
+      toast('头像已更新');
+    } catch (msg) { toast(msg.message); }
   });
   $('#btn-remove-avatar').addEventListener('click', async () => {
-    try { currentUser = await api('/api/profile', { method: 'POST', body: { avatar: '' } }); renderAvatars(); toast('头像已移除'); }
-    catch (msg) { toast(msg.message); }
+    try {
+      currentUser = await api('/api/profile', { method: 'POST', body: { avatar: '' } });
+      renderAvatars();
+      toast('头像已移除');
+    } catch (msg) { toast(msg.message); }
   });
 
   $('#password-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#pw-error'); err.hidden = true;
-    const cur = $('#pw-current').value, next = $('#pw-new').value, next2 = $('#pw-new2').value;
+    const err = $('#pw-error');
+    err.hidden = true;
+    const cur = $('#pw-current').value;
+    const next = $('#pw-new').value;
+    const next2 = $('#pw-new2').value;
     if (next.length < 6) return showErr(err, '新密码至少 6 位');
     if (next !== next2) return showErr(err, '两次输入的新密码不一致');
-    try { await api('/api/password', { method: 'POST', body: { currentPassword: cur, newPassword: next } }); $('#pw-current').value = $('#pw-new').value = $('#pw-new2').value = ''; toast('密码已修改'); }
-    catch (msg) { showErr(err, msg.message); }
+    try {
+      await api('/api/password', { method: 'POST', body: { currentPassword: cur, newPassword: next } });
+      $('#pw-current').value = $('#pw-new').value = $('#pw-new2').value = '';
+      toast('密码已修改');
+    } catch (msg) { showErr(err, msg.message); }
   });
 
-  $('#unit-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; weatherUnit = b.dataset.unit; setSegActive($('#unit-seg'), b); });
+  // 天气单位切换
+  $('#unit-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    weatherUnit = b.dataset.unit;
+    setSegActive($('#unit-seg'), b);
+  });
   $('#weather-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#weather-error'); err.hidden = true;
+    const err = $('#weather-error');
+    err.hidden = true;
     const loc = $('#weather-location').value.trim();
     if (!loc) return showErr(err, '请填写位置');
-    try { await api('/api/settings', { method: 'PUT', body: { location: loc, weatherUnit } }); toast('设置已保存'); await loadWeather(); }
-    catch (msg) { showErr(err, msg.message); }
+    try {
+      await api('/api/settings', { method: 'PUT', body: { location: loc, weatherUnit } });
+      toast('设置已保存');
+      await loadWeather();
+    } catch (msg) { showErr(err, msg.message); }
   });
 
+  // 导航标签切换（主页 / 文件）
   $('#nav-tabs').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
+    const b = e.target.closest('button');
+    if (!b) return;
     const v = b.dataset.view;
     if (v === 'home') { showView('home'); setActiveTab('home'); }
     else if (v === 'files') { showView('files'); setActiveTab('files'); loadFiles(currentPath); }
     else if (v === 'mail') { showView('mail'); setActiveTab('mail'); enterMail(); }
   });
 
+  // 文件：上传 / 新建文件夹
   $('#btn-upload-file').addEventListener('click', () => $('#file-input').click());
   $('#file-input').addEventListener('change', (e) => { uploadFiles(e.target.files); e.target.value = ''; });
   $('#btn-mkdir').addEventListener('click', () => openNameSheet('mkdir', '', ''));
 
+  // 文件：批量操作按钮
   const selActionMap = {
     'btn-del-sel': () => deleteSelected(),
     'btn-download-sel': () => downloadSelected(),
     'btn-share-sel': () => toast('暂未实现，可后续扩展为分享链接'),
   };
-  Object.entries(selActionMap).forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); });
+  Object.entries(selActionMap).forEach(([id, fn]) => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', fn);
+  });
 
+  // 主题切换按钮
   const themeBtn = document.getElementById('btn-theme');
   if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
 
+  // 侧栏折叠/展开按钮
   const sidebarToggle = document.getElementById('btn-sidebar-toggle');
-  if (sidebarToggle) sidebarToggle.addEventListener('click', () => { const wrap = $('#files-wrap'); wrap.classList.toggle('sidebar-collapsed'); });
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      const wrap = $('#files-wrap');
+      wrap.classList.toggle('sidebar-collapsed');
+    });
+  }
+  // 侧栏导航切换（近期 / 全部 / 回收站）
+  $$('.fs-nav').forEach((b) => b.addEventListener('click', () => {
+    switchFsView(b.dataset.fsview);
+  }));
 
-  $$('.fs-nav').forEach((b) => b.addEventListener('click', () => { switchFsView(b.dataset.fsview); }));
-
+  // "更多" 按钮占位
   const moreBtn = document.getElementById('btn-files-more');
   if (moreBtn) moreBtn.addEventListener('click', () => toast('更多操作：暂未实现'));
 
+  // 文件列表事件委托
   $('#files-list').addEventListener('click', (e) => {
     const actionBtn = e.target.closest('[data-act]');
     const checkBox = e.target.closest('input[type="checkbox"]');
     const row = e.target.closest('.file-row');
     if (!row) return;
     const rel = row.dataset.path;
-    if (checkBox) { e.stopPropagation(); toggleSelectRow(row); return; }
+    // 勾选框：单独处理切换选中，不触发进入/下载
+    if (checkBox) {
+      e.stopPropagation();
+      toggleSelectRow(row);
+      return;
+    }
     if (actionBtn) {
       const act = actionBtn.dataset.act;
       if (act === 'edit') editFile(rel);
@@ -432,15 +660,21 @@ function bindEvents() {
       else if (act === 'del') deleteFile(rel);
       return;
     }
-    if (selectedFiles.size > 0) { toggleSelectRow(row); return; }
+    // 普通点击：先判断是否已经有选中项 —— 有则切换选中，无则进入或下载
+    if (selectedFiles.size > 0) {
+      toggleSelectRow(row);
+      return;
+    }
     if (row.dataset.type === 'dir') loadFiles(rel);
     else if (row.dataset.editable === '1') editFile(rel);
     else downloadFile(rel);
   });
 
+  // 名称 sheet（新建文件夹 / 重命名）
   $('#name-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#name-error'); err.hidden = true;
+    const err = $('#name-error');
+    err.hidden = true;
     const val = $('#name-input').value.trim();
     if (!val) return showErr(err, '请输入名称');
     try {
@@ -452,6 +686,7 @@ function bindEvents() {
     } catch (msg) { showErr(err, msg.message); }
   });
 
+  // 拖拽上传
   let dragDepth = 0;
   window.addEventListener('dragenter', (e) => { if (!isFilesVisible()) return; dragDepth++; $('#drop-hint').hidden = false; e.preventDefault(); });
   window.addEventListener('dragover', (e) => { if (isFilesVisible()) e.preventDefault(); });
@@ -462,15 +697,33 @@ function bindEvents() {
     if (e.dataTransfer && e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
   });
 
-  $('#btn-mail-compose').addEventListener('click', () => { if (!mailAccounts.length) { toast('请先添加邮件账户'); return; } openComposeSheet(null); });
+  // 邮件：写邮件
+  $('#btn-mail-compose').addEventListener('click', () => {
+    if (!mailAccounts.length) { toast('请先添加邮件账户'); return; }
+    openComposeSheet(null);
+  });
   $('#btn-mail-refresh').addEventListener('click', () => loadMailList(false));
   $('#compose-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#compose-error'); err.hidden = true;
+    const err = $('#compose-error');
+    err.hidden = true;
     const files = $('#compose-attachments').querySelectorAll('.attach-chip');
-    const attachments = Array.from(files).map((f) => ({ filename: f.dataset.name, contentType: f.dataset.type, content: f.dataset.content })).filter((a) => a.content);
+    const attachments = Array.from(files).map((f) => ({
+      filename: f.dataset.name, contentType: f.dataset.type, content: f.dataset.content,
+    })).filter((a) => a.content);
     try {
-      await api('/api/mail/send', { method: 'POST', body: { account: $('#compose-account').value, to: $('#compose-to').value, cc: $('#compose-cc').value, bcc: $('#compose-bcc').value, subject: $('#compose-subject').value, text: $('#compose-body').value, attachments } });
+      await api('/api/mail/send', {
+        method: 'POST',
+        body: {
+          account: $('#compose-account').value,
+          to: $('#compose-to').value,
+          cc: $('#compose-cc').value,
+          bcc: $('#compose-bcc').value,
+          subject: $('#compose-subject').value,
+          text: $('#compose-body').value,
+          attachments,
+        },
+      });
       closeSheet();
       toast('邮件已发送');
     } catch (msg) { showErr(err, msg.message); }
@@ -493,11 +746,24 @@ function bindEvents() {
     });
     e.target.value = '';
   });
+  // 邮件账户表单
   $('#mailaccount-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = $('#ma-error'); err.hidden = true;
+    const err = $('#ma-error');
+    err.hidden = true;
     try {
-      await api('/api/mail/accounts', { method: 'POST', body: { name: $('#ma-name').value, email: $('#ma-email').value.trim(), password: $('#ma-password').value, imapHost: $('#ma-imap').value.trim(), imapSecure: $('#ma-imap-ssl').checked, smtpHost: $('#ma-smtp').value.trim(), smtpSecure: $('#ma-smtp-ssl').checked } });
+      await api('/api/mail/accounts', {
+        method: 'POST',
+        body: {
+          name: $('#ma-name').value,
+          email: $('#ma-email').value.trim(),
+          password: $('#ma-password').value,
+          imapHost: $('#ma-imap').value.trim(),
+          imapSecure: $('#ma-imap-ssl').checked,
+          smtpHost: $('#ma-smtp').value.trim(),
+          smtpSecure: $('#ma-smtp-ssl').checked,
+        },
+      });
       closeSheet();
       toast('账户已添加');
       const data = await api('/api/mail/accounts');
@@ -508,6 +774,7 @@ function bindEvents() {
     } catch (msg) { showErr(err, msg.message); }
   });
 
+  // 导航滚动阴影
   const nav = $('#navbar');
   addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
 }
@@ -527,17 +794,29 @@ async function openSettings() {
   openSheet($('#settings-sheet'));
 }
 
-async function doLogout() { try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ } currentUser = null; showView('login'); }
+async function doLogout() {
+  try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+  currentUser = null;
+  showView('login');
+}
 
 /* ═══════════════ 主题切换 ═══════════════ */
-function applyTheme(theme) { const t = theme === 'dark' ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', t); localStorage.setItem('panel_theme', t); }
+function applyTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('panel_theme', t);
+}
 function initTheme() {
   const saved = localStorage.getItem('panel_theme');
   if (saved) return applyTheme(saved);
+  // 未设置则跟随系统
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   applyTheme(prefersDark ? 'dark' : 'light');
 }
-function toggleTheme() { const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; applyTheme(cur === 'dark' ? 'light' : 'dark'); }
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
 
 /* ═══════════════ 文件（云盘） ═══════════════ */
 let currentPath = '/';
@@ -567,7 +846,11 @@ const FILE_GLYPH_SVG = {
   other: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>',
 };
 
-const FILE_KIND_LABEL = { dir: '文件夹', word: '文档', cell: '电子表格', slide: '演示文稿', pdf: 'PDF', image: '图片', video: '视频', audio: '音频', archive: '压缩包', other: '文件' };
+const FILE_KIND_LABEL = {
+  dir: '文件夹',
+  word: '文档', cell: '电子表格', slide: '演示文稿', pdf: 'PDF',
+  image: '图片', video: '视频', audio: '音频', archive: '压缩包', other: '文件',
+};
 
 function fileIconClass(item) {
   if (item.type === 'dir') return 'dir';
@@ -582,14 +865,22 @@ function fileIconClass(item) {
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(e)) return 'archive';
   return 'other';
 }
-function formatMtime(ms) { const d = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
-function joinPath(dir, name) { if (dir === '/' || dir === '') return '/' + name; return dir.replace(/\/+$/, '') + '/' + name; }
+function formatMtime(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function joinPath(dir, name) {
+  if (dir === '/' || dir === '') return '/' + name;
+  return dir.replace(/\/+$/, '') + '/' + name;
+}
 
 async function loadFiles(path) {
   currentPath = path || '/';
   currentFsView = 'all';
   $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === 'all'));
-  const mkdirBtn = $('#btn-mkdir'); const uploadBtn = $('#btn-upload-file');
+  const mkdirBtn = $('#btn-mkdir');
+  const uploadBtn = $('#btn-upload-file');
   if (mkdirBtn) mkdirBtn.hidden = false;
   if (uploadBtn) uploadBtn.hidden = false;
   selectedFiles.clear();
@@ -601,12 +892,15 @@ async function loadFiles(path) {
   } catch (msg) { toast(msg.message); }
 }
 
+/* ── 侧栏视图切换：近期 / 全部 / 回收站 ── */
 function switchFsView(view) {
   currentFsView = view || 'all';
   $$('.fs-nav').forEach((b) => b.classList.toggle('active', b.dataset.fsview === currentFsView));
   selectedFiles.clear();
   updateSelectionUI();
-  const mkdirBtn = $('#btn-mkdir'); const uploadBtn = $('#btn-upload-file');
+  // 视图相关按钮显隐：回收站视图隐藏「新建文件夹/上传」
+  const mkdirBtn = $('#btn-mkdir');
+  const uploadBtn = $('#btn-upload-file');
   if (mkdirBtn) mkdirBtn.hidden = currentFsView === 'trash';
   if (uploadBtn) uploadBtn.hidden = currentFsView === 'trash';
   if (view === 'recent') loadRecent();
@@ -625,16 +919,34 @@ async function loadRecent() {
   try {
     const data = await api('/api/files/recent?limit=30');
     ul.innerHTML = '';
-    if (!data.items || !data.items.length) { $('#files-empty').hidden = false; $('#files-empty').textContent = '暂无文件'; return; }
+    if (!data.items || !data.items.length) {
+      $('#files-empty').hidden = false;
+      $('#files-empty').textContent = '暂无文件';
+      return;
+    }
+    // 按天分组
     const groups = groupByTime(data.items);
     for (const g of groups) {
-      const head = document.createElement('li'); head.className = 'file-group'; head.textContent = g.label; ul.appendChild(head);
-      for (const item of g.items) { const rel = '/' + item.name; const kindClass = fileIconClass(item); ul.appendChild(fileRowEl(item, rel, kindClass)); }
+      const head = document.createElement('li');
+      head.className = 'file-group';
+      head.textContent = g.label;
+      ul.appendChild(head);
+      for (const item of g.items) {
+        const rel = '/' + item.name;
+        const kindClass = fileIconClass(item);
+        ul.appendChild(fileRowEl(item, rel, kindClass));
+      }
     }
+    // 近期文件点击直接下载（跨目录）
     bindRecentListEvents();
-  } catch (e) { ul.innerHTML = ''; $('#files-empty').hidden = false; $('#files-empty').textContent = '加载失败：' + e.message; }
+  } catch (e) {
+    ul.innerHTML = '';
+    $('#files-empty').hidden = false;
+    $('#files-empty').textContent = '加载失败：' + e.message;
+  }
 }
 
+// 近期文件行：点击下载/编辑，操作列提供下载
 function bindRecentListEvents() {
   $('#files-list').querySelectorAll('.file-row').forEach((row) => {
     row.addEventListener('click', (e) => {
@@ -666,32 +978,74 @@ async function loadTrash() {
   try {
     const data = await api('/api/trash/list');
     ul.innerHTML = '';
-    if (!data.items || !data.items.length) { $('#files-empty').hidden = false; $('#files-empty').textContent = '回收站为空'; return; }
+    if (!data.items || !data.items.length) {
+      $('#files-empty').hidden = false;
+      $('#files-empty').textContent = '回收站为空';
+      return;
+    }
     for (const item of data.items) {
       const li = document.createElement('li');
       li.className = 'file-row trash-row';
       li.dataset.path = item.name;
       const kindClass = fileIconClass({ type: 'file', ext: item.ext });
-      const actions = ['<button class="icon-btn" data-act="restore" title="恢复">' + FILE_ICONS.download + '</button>', '<button class="icon-btn" data-act="purge" title="彻底删除">' + FILE_ICONS.del + '</button>'];
+      const actions = [
+        '<button class="icon-btn" data-act="restore" title="恢复">' + FILE_ICONS.download + '</button>',
+        '<button class="icon-btn" data-act="purge" title="彻底删除">' + FILE_ICONS.del + '</button>',
+      ];
       const nameTitle = escapeHTML(item.name);
-      li.innerHTML = ['<span class="file-check"><input type="checkbox" aria-label="选择"/></span>', '<span class="file-icon">', '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>', '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '</span>', '</span>', '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>', '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>', '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>', '<span class="file-actions">' + actions.join('') + '</span>'].join('');
+      li.innerHTML = [
+        '<span class="file-check"><input type="checkbox" aria-label="选择"/></span>',
+        '<span class="file-icon">',
+          '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>',
+          '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '</span>',
+        '</span>',
+        '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>',
+        '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>',
+        '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
+        '<span class="file-actions">' + actions.join('') + '</span>'
+      ].join('');
       li.addEventListener('click', (e) => {
         const actionBtn = e.target.closest('[data-act]');
-        if (actionBtn) { const act = actionBtn.dataset.act; if (act === 'restore') trashRestore(item.name); else if (act === 'purge') trashPurge(item.name); }
+        if (actionBtn) {
+          const act = actionBtn.dataset.act;
+          if (act === 'restore') trashRestore(item.name);
+          else if (act === 'purge') trashPurge(item.name);
+        }
       });
       ul.appendChild(li);
     }
-  } catch (e) { ul.innerHTML = ''; $('#files-empty').hidden = false; $('#files-empty').textContent = '加载失败：' + e.message; }
+  } catch (e) {
+    ul.innerHTML = '';
+    $('#files-empty').hidden = false;
+    $('#files-empty').textContent = '加载失败：' + e.message;
+  }
 }
 
-async function trashRestore(name) { try { await api('/api/trash/restore', { method: 'POST', body: { path: name } }); toast('已恢复'); await loadTrash(); } catch (e) { toast(e.message); } }
-async function trashPurge(name) { if (!confirm('彻底删除「' + name + '」？此操作不可恢复。')) return; try { await api('/api/trash/purge', { method: 'POST', body: { path: name } }); toast('已彻底删除'); await loadTrash(); } catch (e) { toast(e.message); } }
+async function trashRestore(name) {
+  try {
+    await api('/api/trash/restore', { method: 'POST', body: { path: name } });
+    toast('已恢复');
+    await loadTrash();
+  } catch (e) { toast(e.message); }
+}
+async function trashPurge(name) {
+  if (!confirm('彻底删除「' + name + '」？此操作不可恢复。')) return;
+  try {
+    await api('/api/trash/purge', { method: 'POST', body: { path: name } });
+    toast('已彻底删除');
+    await loadTrash();
+  } catch (e) { toast(e.message); }
+}
 
-function folderTitle() { if (currentPath === '/' || !currentPath) return '全部文件'; const parts = currentPath.split('/').filter(Boolean); return parts[parts.length - 1] || '全部文件'; }
+function folderTitle() {
+  if (currentPath === '/' || !currentPath) return '全部文件';
+  const parts = currentPath.split('/').filter(Boolean);
+  return parts[parts.length - 1] || '全部文件';
+}
 
 function renderBreadcrumb() {
   const wrap = $('#file-crumbs');
-  wrap.innerHTML = '';
+  wrap.innerHTML = "";
   const root = document.createElement('button');
   root.className = 'crumb' + (currentPath === '/' ? ' current' : '');
   root.textContent = '全部文件';
@@ -701,7 +1055,9 @@ function renderBreadcrumb() {
     const parts = currentPath.split('/').filter(Boolean);
     let acc = '';
     parts.forEach((p, i) => {
-      const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '\u203A'; wrap.appendChild(sep);
+      const sep = document.createElement('span');
+      sep.className = 'sep'; sep.textContent = '\u203A';
+      wrap.appendChild(sep);
       acc += '/' + p;
       const btn = document.createElement('button');
       btn.className = 'crumb' + (i === parts.length - 1 ? ' current' : '');
@@ -715,16 +1071,40 @@ function renderBreadcrumb() {
 function renderHero(data) {
   const count = data.items.length;
   const totalSize = data.items.reduce((s, i) => s + (i.size || 0), 0);
-  const sizeText = totalSize < 1024 ? '0 B' : totalSize < 1024 * 1024 ? (totalSize / 1024).toFixed(1) + ' KB' : totalSize < 1024 * 1024 * 1024 ? (totalSize / 1024 / 1024).toFixed(1) + ' MB' : (totalSize / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  const sizeText = totalSize < 1024 ? '0 B'
+    : totalSize < 1024 * 1024 ? (totalSize / 1024).toFixed(1) + ' KB'
+    : totalSize < 1024 * 1024 * 1024 ? (totalSize / 1024 / 1024).toFixed(1) + ' MB'
+    : (totalSize / 1024 / 1024 / 1024).toFixed(2) + ' GB';
   $('#files-hero-title').textContent = folderTitle();
   $('#files-hero-sub').textContent = count + ' 个项目，共 ' + sizeText;
 }
 
-function timeBucketLabel(ms) { const d = new Date(ms); const now = new Date(); const diffDay = Math.floor((now - d) / (1000 * 60 * 60 * 24)); if (diffDay === 0) return '今天'; if (diffDay === 1) return '昨天'; if (diffDay < 7) return '本周早些时候'; if (diffDay < 30) return '上周'; if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月'; return d.getFullYear() + '年'; }
+function timeBucketLabel(ms) {
+  const d = new Date(ms);
+  const now = new Date();
+  const diffDay = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+  if (diffDay === 0) return '今天';
+  if (diffDay === 1) return '昨天';
+  if (diffDay < 7) return '本周早些时候';
+  if (diffDay < 30) return '上周';
+  if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月';
+  return d.getFullYear() + '年';
+}
 function groupByTime(items) {
-  const sorted = items.slice().sort((a, b) => { if (a.type !== b.type) return a.type === 'dir' ? -1 : 1; return b.mtime - a.mtime; });
-  const groups = []; let lastBucket = null;
-  for (const it of sorted) { const bucket = timeBucketLabel(it.mtime); if (bucket !== lastBucket) { groups.push({ label: bucket, items: [] }); lastBucket = bucket; } groups[groups.length - 1].items.push(it); }
+  const sorted = items.slice().sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    return b.mtime - a.mtime;
+  });
+  const groups = [];
+  let lastBucket = null;
+  for (const it of sorted) {
+    const bucket = timeBucketLabel(it.mtime);
+    if (bucket !== lastBucket) {
+      groups.push({ label: bucket, items: [] });
+      lastBucket = bucket;
+    }
+    groups[groups.length - 1].items.push(it);
+  }
   return groups;
 }
 
@@ -746,21 +1126,45 @@ function fileRowEl(item, fullPath, kindClass) {
   const svgGlyph = FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other;
   const nameTitle = escapeHTML(item.name);
   const kindInline = escapeHTML(subInfo);
-  li.innerHTML = ['<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>', '<span class="file-icon">', '<span class="file-icon-bg ' + kindClass + '">' + svgGlyph + '</span>', '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '<span class="file-kind-inline">' + kindInline + '</span></span>', '</span>', '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>', '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>', '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>', '<span class="file-actions">' + actions.join('') + '</span>'].join('');
+  li.innerHTML = [
+    '<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>',
+    '<span class="file-icon">',
+      '<span class="file-icon-bg ' + kindClass + '">' + svgGlyph + '</span>',
+      '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '<span class="file-kind-inline">' + kindInline + '</span></span>',
+    '</span>',
+    '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>',
+    '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>',
+    '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
+    '<span class="file-actions">' + actions.join('') + '</span>'
+  ].join("");
   return li;
 }
 
 function renderFiles(data) {
   const ul = $('#files-list');
-  ul.innerHTML = '';
+  ul.innerHTML = "";
   const groups = groupByTime(data.items);
-  if (groups.length === 0) { $('#files-empty').hidden = false; $('#files-panel').hidden = true; $('#files-check-all').checked = false; updateSelectionUI(); return; }
+  if (groups.length === 0) {
+    $('#files-empty').hidden = false;
+    $('#files-panel').hidden = true;
+    $('#files-check-all').checked = false;
+    updateSelectionUI();
+    return;
+  }
   $('#files-empty').hidden = true;
   $('#files-panel').hidden = false;
   const allPaths = [];
   for (const g of groups) {
-    const groupHead = document.createElement('li'); groupHead.className = 'file-group'; groupHead.textContent = g.label; ul.appendChild(groupHead);
-    for (const item of g.items) { const rel = joinPath(data.path, item.name); const kindClass = fileIconClass(item); ul.appendChild(fileRowEl(item, rel, kindClass)); allPaths.push(rel); }
+    const groupHead = document.createElement('li');
+    groupHead.className = 'file-group';
+    groupHead.textContent = g.label;
+    ul.appendChild(groupHead);
+    for (const item of g.items) {
+      const rel = joinPath(data.path, item.name);
+      const kindClass = fileIconClass(item);
+      ul.appendChild(fileRowEl(item, rel, kindClass));
+      allPaths.push(rel);
+    }
   }
   const allBox = $('#files-check-all');
   if (allBox) {
@@ -770,7 +1174,9 @@ function renderFiles(data) {
       if (allBox.checked) allPaths.forEach((p) => selectedFiles.add(p));
       else allPaths.forEach((p) => selectedFiles.delete(p));
       ul.querySelectorAll('.file-row').forEach((row) => row.classList.toggle('selected', selectedFiles.has(row.dataset.path)));
-      ul.querySelectorAll('.file-row input[type="checkbox"]').forEach((cb, i) => { if (allPaths[i]) cb.checked = selectedFiles.has(allPaths[i]); });
+      ul.querySelectorAll('.file-row input[type="checkbox"]').forEach((cb, i) => {
+        if (allPaths[i]) cb.checked = selectedFiles.has(allPaths[i]);
+      });
       updateSelectionUI();
     };
   }
@@ -780,11 +1186,17 @@ function updateSelectionUI() {
   const n = selectedFiles.size;
   const enable = n > 0;
   const inTrash = currentFsView === 'trash';
-  ['btn-share-sel', 'btn-download-sel'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = !enable || inTrash; });
+  // 回收站视图：批量分享/下载不可用（每行自带恢复/删除），删除按钮禁用
+  ['btn-share-sel', 'btn-download-sel'].forEach((id) => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !enable || inTrash;
+  });
   const delBtn = document.getElementById('btn-del-sel');
   if (delBtn) delBtn.disabled = inTrash ? true : !enable;
   const sub = $('#files-hero-sub');
-  if (n > 0 && sub) sub.textContent = '已选择 ' + n + ' 个项目';
+  if (n > 0 && sub) {
+    sub.textContent = '已选择 ' + n + ' 个项目';
+  }
 }
 
 function toggleSelectRow(row) {
@@ -803,7 +1215,9 @@ async function deleteSelected() {
   if (!paths.length) return;
   if (!confirm('确定删除选中的 ' + paths.length + ' 个项目？将移入回收站。')) return;
   try {
-    for (const p of paths) await api('/api/files/delete', { method: 'POST', body: { path: p } });
+    for (const p of paths) {
+      await api('/api/files/delete', { method: 'POST', body: { path: p } });
+    }
     selectedFiles.clear();
     toast('已移入回收站 ' + paths.length + ' 个项目');
     await loadFiles(currentPath);
@@ -811,7 +1225,15 @@ async function deleteSelected() {
 }
 
 function downloadSelected() {
-  Array.from(selectedFiles).forEach((p) => { const a = document.createElement('a'); a.href = '/api/files/download?path=' + encodeURIComponent(p); a.download = ''; document.body.appendChild(a); a.click(); a.remove(); });
+  const paths = Array.from(selectedFiles);
+  paths.forEach((p) => {
+    const a = document.createElement('a');
+    a.href = '/api/files/download?path=' + encodeURIComponent(p);
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
 }
 
 async function uploadFiles(files) {
@@ -822,19 +1244,34 @@ async function uploadFiles(files) {
     fd.append('file', f, f.name);
     const res = await fetch('/api/files/upload', { method: 'POST', body: fd });
     if (res.status === 401) { showView('login'); return; }
-    if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.error || '上传失败'); }
-    else count++;
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast(d.error || '上传失败');
+    } else count++;
   }
   if (count) toast('已上传 ' + count + ' 个文件');
   await loadFiles(currentPath);
 }
-function downloadFile(rel) { const a = document.createElement('a'); a.href = '/api/files/download?path=' + encodeURIComponent(rel); a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }
-function editFile(rel) { window.open('/edit.html?path=' + encodeURIComponent(rel), '_blank'); }
+function downloadFile(rel) {
+  const a = document.createElement('a');
+  a.href = '/api/files/download?path=' + encodeURIComponent(rel);
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+function editFile(rel) {
+  window.open('/edit.html?path=' + encodeURIComponent(rel), '_blank');
+}
 async function deleteFile(rel) {
   const name = rel.split('/').pop();
   if (!confirm('确定删除「' + name + '」？将移入回收站。')) return;
-  try { await api('/api/files/delete', { method: 'POST', body: { path: rel } }); selectedFiles.delete(rel); toast('已移入回收站'); await loadFiles(currentPath); }
-  catch (msg) { toast(msg.message); }
+  try {
+    await api('/api/files/delete', { method: 'POST', body: { path: rel } });
+    selectedFiles.delete(rel);
+    toast('已移入回收站');
+    await loadFiles(currentPath);
+  } catch (msg) { toast(msg.message); }
 }
 function openNameSheet(mode, target, type) {
   nameSheetMode = mode;
@@ -847,8 +1284,9 @@ function openNameSheet(mode, target, type) {
   setTimeout(() => $('#name-input').focus(), 100);
 }
 function isFilesVisible() { return !$('#view-files').hidden; }
-function setActiveTab(v) { $('#nav-tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.view === v)); }
-
+function setActiveTab(v) {
+  $('#nav-tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+}
 /* ═══════════════ 邮件 ═══════════════ */
 let mailAccounts = [];
 let mailCurrentAccount = null;
@@ -856,10 +1294,32 @@ let mailFoldersData = { folders: [], special: { junk: [], trash: [], sent: [], d
 let mailCurrentFolder = 'INBOX';
 let mailCurrentUid = null;
 let mailTimer = null;
-const MAIL_PRESETS = { qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' }, 163: { imap: 'imap.163.com', smtp: 'smtp.163.com' }, gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' }, outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' } };
-function applyMailPreset() { const p = MAIL_PRESETS[$('#ma-preset').value]; if (p) { $('#ma-imap').value = p.imap; $('#ma-smtp').value = p.smtp; } }
-function fmtMailTime(ts) { if (!ts) return ''; const d = new Date(ts); const now = new Date(); const sameDay = d.toDateString() === now.toDateString(); const pad = (n) => String(n).padStart(2, '0'); if (sameDay) return `${pad(d.getHours())}:${pad(d.getMinutes())}`; if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`; return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; }
-function fmtSize(n) { if (!n) return ''; if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
+const MAIL_PRESETS = {
+  qq: { imap: 'imap.qq.com', smtp: 'smtp.qq.com' },
+  163: { imap: 'imap.163.com', smtp: 'smtp.163.com' },
+  gmail: { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com' },
+  outlook: { imap: 'outlook.office365.com', smtp: 'smtp.office365.com' },
+};
+function applyMailPreset() {
+  const p = MAIL_PRESETS[$('#ma-preset').value];
+  if (p) { $('#ma-imap').value = p.imap; $('#ma-smtp').value = p.smtp; }
+}
+function fmtMailTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const pad = (n) => String(n).padStart(2, '0');
+  if (sameDay) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+function fmtSize(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
 
 async function enterMail() {
   stopMailPoll();
@@ -868,33 +1328,68 @@ async function enterMail() {
     mailAccounts = data.accounts || [];
     renderMailAccounts();
     if (mailAccounts.length) {
-      if (!mailCurrentAccount || !mailAccounts.some((a) => a.id === mailCurrentAccount.id)) mailCurrentAccount = mailAccounts[0];
+      if (!mailCurrentAccount || !mailAccounts.some((a) => a.id === mailCurrentAccount.id)) {
+        mailCurrentAccount = mailAccounts[0];
+      }
       await loadMailFolders();
       await loadMailList(true);
       startMailPoll();
     } else {
-      $('#mail-folders').innerHTML = ''; $('#mail-list').innerHTML = '';
-      $('#mail-empty').hidden = false; $('#mail-empty').textContent = '还没有配置邮件账户，点击左侧「添加账户」。';
+      $('#mail-folders').innerHTML = '';
+      $('#mail-list').innerHTML = '';
+      $('#mail-empty').hidden = false;
+      $('#mail-empty').textContent = '还没有配置邮件账户，点击左侧「添加账户」。';
       $('#mail-folder-title').textContent = '邮件';
       $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">请先添加邮件账户</div>';
       $('#mail-nav-badge').hidden = true;
     }
-  } catch (e) { $('#mail-empty').hidden = false; $('#mail-empty').textContent = '邮件模块加载失败：' + e.message; }
+  } catch (e) {
+    $('#mail-empty').hidden = false;
+    $('#mail-empty').textContent = '邮件模块加载失败：' + e.message;
+  }
 }
 
 function renderMailAccounts() {
   const wrap = $('#mail-accounts');
-  if (!mailAccounts.length) wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
-  else wrap.innerHTML = mailAccounts.map((a) => '<button class="mail-account-item' + (mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : '') + '" data-id="' + a.id + '"><span class="ma-name" title="' + escapeHTML(a.email) + '">' + escapeHTML(a.name || a.email) + '</span><button class="ma-del" data-del="' + a.id + '" title="删除账户">×</button></button>').join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
+  if (!mailAccounts.length) {
+    wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
+  } else {
+    wrap.innerHTML = mailAccounts.map((a) => `
+      <button class="mail-account-item${mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : ''}" data-id="${a.id}">
+        <span class="ma-name" title="${escapeHTML(a.email)}">${escapeHTML(a.name || a.email)}</span>
+        <span class="ma-actions">
+          <button class="ma-test" data-test="${a.id}" title="测试连接">测试</button>
+          <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
+        </span>
+      </button>
+    `).join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
+  }
   wrap.querySelectorAll('.mail-account-item').forEach((item) => {
-    item.addEventListener('click', (e) => { if (e.target.closest('[data-del]')) return; mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id); renderMailAccounts(); loadMailFolders(); });
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('[data-del]') || e.target.closest('[data-test]')) return;
+      mailCurrentAccount = mailAccounts.find((a) => a.id === item.dataset.id);
+      renderMailAccounts();
+      loadMailFolders();
+    });
   });
+  wrap.querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const id = b.dataset.test;
+    b.disabled = true;
+    const orig = b.textContent;
+    b.textContent = '…';
+    try {
+      const r = await api(`/api/mail/accounts/${id}?test=1`, { method: 'POST' });
+      toast(`IMAP: ${r.imap ? '✓ 正常' : '✗ 失败'}  SMTP: ${r.smtp ? '✓ 正常' : '✗ 失败'}${r.error ? '  ' + r.error : ''}`);
+    } catch (err) { toast('测试失败：' + err.message); }
+    finally { b.disabled = false; b.textContent = orig; }
+  }));
   wrap.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async (e) => {
     e.stopPropagation();
     const id = b.dataset.del;
     if (!confirm('确定删除该邮件账户？')) return;
     try {
-      await api('/api/mail/accounts/' + id, { method: 'DELETE' });
+      await api(`/api/mail/accounts/${id}`, { method: 'DELETE' });
       mailAccounts = mailAccounts.filter((a) => a.id !== id);
       if (mailCurrentAccount && mailCurrentAccount.id === id) mailCurrentAccount = mailAccounts[0] || null;
       renderMailAccounts();
@@ -908,17 +1403,29 @@ function renderMailAccounts() {
 async function loadMailFolders() {
   if (!mailCurrentAccount) return;
   try {
-    const data = await api('/api/mail/folders?account=' + mailCurrentAccount.id);
+    const data = await api(`/api/mail/folders?account=${mailCurrentAccount.id}`);
     mailFoldersData = data;
     renderMailFolders();
-    if (!mailFoldersData.folders.some((f) => f.path === mailCurrentFolder)) mailCurrentFolder = 'INBOX';
+    // 自动选中收件箱或当前文件夹
+    if (!mailFoldersData.folders.some((f) => f.path === mailCurrentFolder)) {
+      mailCurrentFolder = 'INBOX';
+    }
   } catch (e) { toast(e.message); }
 }
 
 function renderMailFolders() {
   const wrap = $('#mail-folders');
   const folders = mailFoldersData.folders || [];
-  const rank = (p) => { const l = p.toLowerCase(); if (l === 'inbox') return 0; if (/(junk|spam|垃圾)/.test(l)) return 1; if (/(trash|deleted|已删除|回收站)/.test(l)) return 3; if (/(sent|已发送)/.test(l)) return 4; if (/(draft|草稿)/.test(l)) return 5; return 2; };
+  // 优先级排序：收件箱、垃圾邮件、已发送、其他
+  const rank = (p) => {
+    const l = p.toLowerCase();
+    if (l === 'inbox') return 0;
+    if (/(junk|spam|垃圾)/.test(l)) return 1;
+    if (/(trash|deleted|已删除|回收站)/.test(l)) return 3;
+    if (/(sent|已发送)/.test(l)) return 4;
+    if (/(draft|草稿)/.test(l)) return 5;
+    return 2;
+  };
   const sorted = folders.slice().sort((a, b) => rank(a.path) - rank(b.path));
   const ICO = {
     inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
@@ -937,9 +1444,13 @@ function renderMailFolders() {
     else if (/(draft|草稿)/.test(l)) icon = ICO.draft;
     const active = f.path === mailCurrentFolder ? ' active' : '';
     const isJunk = /(junk|spam|垃圾)/.test(f.path.toLowerCase());
-    return '<button class="mail-folder' + active + '" data-folder="' + escapeHTML(f.path) + '">' + icon + '<span>' + escapeHTML(isJunk ? '垃圾邮件' : f.path) + '</span></button>';
+    return `<button class="mail-folder${active}" data-folder="${escapeHTML(f.path)}">${icon}<span>${escapeHTML(isJunk ? '垃圾邮件' : f.path)}</span></button>`;
   }).join('');
-  wrap.querySelectorAll('.mail-folder').forEach((b) => b.addEventListener('click', () => { mailCurrentFolder = b.dataset.folder; renderMailFolders(); loadMailList(true); }));
+  wrap.querySelectorAll('.mail-folder').forEach((b) => b.addEventListener('click', () => {
+    mailCurrentFolder = b.dataset.folder;
+    renderMailFolders();
+    loadMailList(true);
+  }));
 }
 
 async function loadMailList(clearRead = false) {
@@ -953,13 +1464,29 @@ async function loadMailList(clearRead = false) {
   listEl.innerHTML = '';
   emptyEl.hidden = true;
   try {
-    const data = await api('/api/mail/list?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder));
+    const data = await api(`/api/mail/list?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}`);
     loadingEl.hidden = true;
-    if (!data.items || !data.items.length) { emptyEl.hidden = false; emptyEl.textContent = '该文件夹暂无邮件'; listEl.innerHTML = ''; return; }
-    listEl.innerHTML = data.items.map((m) => '<button class="mail-item' + (m.seen ? '' : ' unseen') + (m.uid === mailCurrentUid ? ' active' : '') + '" data-uid="' + m.uid + '"><div class="mi-from"><span>' + escapeHTML(m.fromName || m.fromAddr || '(未知发件人)') + '</span>' + (m.flags && m.flags.includes('\\Flagged') ? '<span class="mi-flag">★</span>' : '') + '<span class="mi-date">' + fmtMailTime(m.date) + '</span></div><div class="mi-subject">' + escapeHTML(m.subject) + '</div><div class="mi-preview">' + escapeHTML((m.fromAddr || '') + ' · ' + fmtSize(m.size)) + '</div></button>').join('');
+    if (!data.items || !data.items.length) {
+      emptyEl.hidden = false;
+      emptyEl.textContent = '该文件夹暂无邮件';
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.innerHTML = data.items.map((m) => `
+      <button class="mail-item${m.seen ? '' : ' unseen'}${m.uid === mailCurrentUid ? ' active' : ''}" data-uid="${m.uid}">
+        <div class="mi-from"><span>${escapeHTML(m.fromName || m.fromAddr || '(未知发件人)')}</span>${m.flags && m.flags.includes('\\Flagged') ? '<span class="mi-flag">★</span>' : ''}<span class="mi-date">${fmtMailTime(m.date)}</span></div>
+        <div class="mi-subject">${escapeHTML(m.subject)}</div>
+        <div class="mi-preview">${escapeHTML((m.fromAddr || '') + ' · ' + fmtSize(m.size))}</div>
+      </button>
+    `).join('');
     listEl.querySelectorAll('.mail-item').forEach((b) => b.addEventListener('click', () => readMail(Number(b.dataset.uid))));
+    // 刷新未读徽标
     updateMailBadge();
-  } catch (e) { loadingEl.hidden = true; emptyEl.hidden = false; emptyEl.textContent = '加载失败：' + e.message; }
+  } catch (e) {
+    loadingEl.hidden = true;
+    emptyEl.hidden = false;
+    emptyEl.textContent = '加载失败：' + e.message;
+  }
 }
 
 async function readMail(uid) {
@@ -968,50 +1495,92 @@ async function readMail(uid) {
   document.querySelectorAll('.mail-item').forEach((el) => el.classList.toggle('active', Number(el.dataset.uid) === uid));
   $('#mail-read-pane').innerHTML = '<div class="mail-loading">正在加载邮件…</div>';
   try {
-    const m = await api('/api/mail/read?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder) + '&uid=' + uid);
+    const m = await api(`/api/mail/read?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}&uid=${uid}`);
     const htmlBody = m.html || (m.text ? m.text.split('\n').map((l) => escapeHTML(l)).join('<br>') : '<p style="color:var(--text-3)">(无正文)</p>');
-    const atts = (m.attachments || []).map((a, i) => '<button class="mr-att" data-dl="' + i + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span class="att-name">' + escapeHTML(a.filename) + '</span><span class="att-size">' + fmtSize(a.size) + '</span></button>').join('');
-    $('#mail-read-pane').innerHTML = '<div class="mail-read-head"><div class="mr-subject">' + escapeHTML(m.subject) + '</div><div class="mr-meta"><span class="mr-avatar">' + escapeHTML((m.from && (m.from.name || m.from.address || '?')).slice(0, 1).toUpperCase()) + '</span><div><div class="mr-from">' + escapeHTML((m.from && (m.from.name || m.from.address)) || '未知发件人') + '</div><div>' + escapeHTML((m.from && m.from.address) || '') + ' · ' + fmtMailTime(m.date) + '</div></div></div><div class="mr-actions"><button class="btn-secondary btn-sm" id="btn-reply">回复</button><button class="btn-secondary btn-sm" id="btn-mail-spam">标记垃圾</button><button class="btn-secondary btn-sm" id="btn-mail-trash">删除</button></div></div><div class="mr-body">' + htmlBody + '</div>' + (atts ? '<div class="mr-attachments"><span class="mr-att-title">附件 (' + (m.attachments || []).length + ')</span>' + atts + '</div>' : '');
-    const reply = $('#btn-reply'); if (reply) reply.addEventListener('click', () => openComposeSheet(m));
-    const spam = $('#btn-mail-spam'); if (spam) spam.addEventListener('click', async () => { await mailFlag('spam'); });
-    const trash = $('#btn-mail-trash'); if (trash) trash.addEventListener('click', async () => { await mailFlag('delete'); });
+    const atts = (m.attachments || []).map((a, i) => `
+      <button class="mr-att" data-dl="${i}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span class="att-name">${escapeHTML(a.filename)}</span>
+        <span class="att-size">${fmtSize(a.size)}</span>
+      </button>
+    `).join('');
+    $('#mail-read-pane').innerHTML = `
+      <div class="mail-read-head">
+        <div class="mr-subject">${escapeHTML(m.subject)}</div>
+        <div class="mr-meta">
+          <span class="mr-avatar">${escapeHTML((m.from && (m.from.name || m.from.address || '?')).slice(0, 1).toUpperCase())}</span>
+          <div>
+            <div class="mr-from">${escapeHTML((m.from && (m.from.name || m.from.address)) || '未知发件人')}</div>
+            <div>${escapeHTML((m.from && m.from.address) || '')} · ${fmtMailTime(m.date)}</div>
+          </div>
+        </div>
+        <div class="mr-actions">
+          <button class="btn-secondary btn-sm" id="btn-reply">回复</button>
+          <button class="btn-secondary btn-sm" id="btn-mail-spam">标记垃圾</button>
+          <button class="btn-secondary btn-sm" id="btn-mail-trash">删除</button>
+        </div>
+      </div>
+      <div class="mr-body">${htmlBody}</div>
+      ${atts ? `<div class="mr-attachments"><span class="mr-att-title">附件 (${(m.attachments || []).length})</span>${atts}</div>` : ''}
+    `;
+    const reply = $('#btn-reply');
+    if (reply) reply.addEventListener('click', () => openComposeSheet(m));
+    const spam = $('#btn-mail-spam');
+    if (spam) spam.addEventListener('click', async () => { await mailFlag('spam'); });
+    const trash = $('#btn-mail-trash');
+    if (trash) trash.addEventListener('click', async () => { await mailFlag('delete'); });
     $('#mail-read-pane').querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => downloadAttachment(Number(b.dataset.dl), m)));
-    const item = document.querySelector('.mail-item[data-uid="' + uid + '"]');
+    // 标记已读后刷新列表未读态
+    const item = document.querySelector(`.mail-item[data-uid="${uid}"]`);
     if (item) item.classList.remove('unseen');
     updateMailBadge();
-  } catch (e) { $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">读取失败：' + escapeHTML(e.message) + '</div>'; }
+  } catch (e) {
+    $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">读取失败：' + escapeHTML(e.message) + '</div>';
+  }
 }
 
 async function mailFlag(action) {
   if (!mailCurrentUid) return;
-  try { await api('/api/mail/flag', { method: 'POST', body: { account: mailCurrentAccount.id, folder: mailCurrentFolder, uids: [mailCurrentUid], action } }); toast(action === 'spam' ? '已标记为垃圾邮件' : '已删除'); loadMailList(true); }
-  catch (e) { toast(e.message); }
+  try {
+    await api('/api/mail/flag', { method: 'POST', body: { account: mailCurrentAccount.id, folder: mailCurrentFolder, uids: [mailCurrentUid], action } });
+    toast(action === 'spam' ? '已标记为垃圾邮件' : '已删除');
+    loadMailList(true);
+  } catch (e) { toast(e.message); }
 }
 
-function downloadAttachment(idx, msg) { window.open('/api/mail/attachment?account=' + mailCurrentAccount.id + '&folder=' + encodeURIComponent(mailCurrentFolder) + '&uid=' + mailCurrentUid + '&index=' + idx, '_blank'); }
+function downloadAttachment(idx, msg) {
+  window.open(`/api/mail/attachment?account=${mailCurrentAccount.id}&folder=${encodeURIComponent(mailCurrentFolder)}&uid=${mailCurrentUid}&index=${idx}`, '_blank');
+}
 
 function openComposeSheet(replyMsg) {
   const sel = $('#compose-account');
-  sel.innerHTML = mailAccounts.map((a) => '<option value="' + a.id + '">' + escapeHTML(a.name || a.email) + '</option>').join('');
+  sel.innerHTML = mailAccounts.map((a) => `<option value="${a.id}">${escapeHTML(a.name || a.email)}</option>`).join('');
   $('#compose-to').value = replyMsg && replyMsg.from && replyMsg.from.address ? replyMsg.from.address : '';
   $('#compose-cc').value = '';
   $('#compose-bcc').value = '';
   $('#compose-subject').value = replyMsg ? 'Re: ' + replyMsg.subject : '';
-  $('#compose-body').value = replyMsg ? '\n\n\n—— 原始邮件 ——\n发件人: ' + (replyMsg.from && (replyMsg.from.name || replyMsg.from.address)) + '\n日期: ' + fmtMailTime(replyMsg.date) + '\n主题: ' + replyMsg.subject + '\n\n' + (replyMsg.text || '') : '';
+  $('#compose-body').value = replyMsg ? `\n\n\n—— 原始邮件 ——\n发件人: ${replyMsg.from && (replyMsg.from.name || replyMsg.from.address)}\n日期: ${fmtMailTime(replyMsg.date)}\n主题: ${replyMsg.subject}\n\n${replyMsg.text || ''}` : '';
   $('#compose-attachments').innerHTML = '';
   $('#compose-error').hidden = true;
   openSheet($('#compose-sheet'));
 }
 
 function openMailAccountSheet() {
-  $('#ma-name').value = ''; $('#ma-email').value = ''; $('#ma-password').value = '';
-  $('#ma-imap').value = ''; $('#ma-smtp').value = '';
-  $('#ma-imap-ssl').checked = true; $('#ma-smtp-ssl').checked = true;
+  $('#ma-name').value = '';
+  $('#ma-email').value = '';
+  $('#ma-password').value = '';
+  $('#ma-imap').value = '';
+  $('#ma-smtp').value = '';
+  $('#ma-imap-ssl').checked = true;
+  $('#ma-smtp-ssl').checked = true;
   $('#ma-error').hidden = true;
   openSheet($('#mailaccount-sheet'));
 }
 
-function startMailPoll() { stopMailPoll(); mailTimer = setInterval(updateMailBadge, 60000); }
+function startMailPoll() {
+  stopMailPoll();
+  mailTimer = setInterval(updateMailBadge, 60000); // 每 60 秒轮询未读
+}
 function stopMailPoll() { if (mailTimer) { clearInterval(mailTimer); mailTimer = null; } }
 async function updateMailBadge() {
   try {
@@ -1019,8 +1588,12 @@ async function updateMailBadge() {
     let totalUnseen = 0;
     for (const a of data.accounts || []) totalUnseen += (a.unseen || 0);
     const badge = $('#mail-nav-badge');
-    if (totalUnseen > 0) { badge.textContent = totalUnseen > 99 ? '99+' : totalUnseen; badge.hidden = false; }
-    else badge.hidden = true;
+    if (totalUnseen > 0) {
+      badge.textContent = totalUnseen > 99 ? '99+' : totalUnseen;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
   } catch (e) { /* 静默失败 */ }
 }
 
@@ -1028,7 +1601,7 @@ async function enterDashboard() {
   showView('home');
   renderAvatars();
   startClock();
-  const netBtn = $('#network-seg').querySelector('[data-net="' + networkMode + '"]');
+  const netBtn = $('#network-seg').querySelector(`[data-net="${networkMode}"]`);
   setSegActive($('#network-seg'), netBtn);
   $('#foot-net').textContent = networkMode === 'internal' ? '内网' : '外网';
   setActiveTab('home');
@@ -1036,6 +1609,7 @@ async function enterDashboard() {
   loadWeather();
 }
 
+/* ── 启动 ──────────────────────────────────────────────────────── */
 (async function init() {
   initTheme();
   buildSwatches();
