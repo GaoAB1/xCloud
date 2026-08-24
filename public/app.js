@@ -50,9 +50,17 @@ function showView(name) {
   $('#view-login').hidden = name !== 'login';
   const authed = name === 'home' || name === 'files' || name === 'mail';
   $('#navbar').hidden = !authed;
+  $('#mobile-tabbar').hidden = !authed;
   $('#view-dashboard').hidden = name !== 'home';
   $('#view-files').hidden = name !== 'files';
   $('#view-mail').hidden = name !== 'mail';
+  // 同步桌面导航 tab 与移动端底部 tab 高亮
+  if (authed) {
+    $('#nav-tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+    $('#mobile-tabbar').querySelectorAll('.tab-item').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+  }
 }
 
 function setSegActive(seg, activeBtn) {
@@ -213,11 +221,11 @@ function togglePopover() {
       </div>
     </div>
     <button class="pop-item" data-act="settings">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <i class="ri-settings-3-line"></i>
       账户设置
     </button>
     <button class="pop-item danger" data-act="logout">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <i class="ri-logout-box-r-line"></i>
       退出登录
     </button>`;
   pop.hidden = false;
@@ -372,15 +380,15 @@ function renderManageList() {
     if (app.url_internal) urls.push('内 ' + app.url_internal);
     if (app.url_external) urls.push('外 ' + app.url_external);
     li.innerHTML = `
-      <span class="drag-handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
+      <span class="drag-handle"><i class="ri-draggable"></i></span>
       ${appIconHTML(app, '')}
       <div class="mi-info">
         <div class="mi-name">${escapeHTML(app.name)}</div>
         <div class="mi-urls">${escapeHTML(urls.join('  ·  ') || '未配置地址')}</div>
       </div>
       <div class="mi-actions">
-        <button class="icon-btn" data-edit title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
-        <button class="icon-btn" data-del title="删除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>
+        <button class="icon-btn" data-edit title="编辑"><i class="ri-edit-line"></i></button>
+        <button class="icon-btn" data-del title="删除"><i class="ri-delete-bin-6-line"></i></button>
       </div>`;
     ul.appendChild(li);
   });
@@ -592,14 +600,23 @@ function bindEvents() {
     } catch (msg) { showErr(err, msg.message); }
   });
 
-  // 导航标签切换（主页 / 文件）
+  // 导航标签切换（主页 / 文件 / 邮件）—— 桌面
   $('#nav-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    const v = b.dataset.view;
+    navigateTo(b.dataset.view);
+  });
+
+  // 导航切换（移动端底部标签栏共用）
+  function navigateTo(v) {
     if (v === 'home') { showView('home'); setActiveTab('home'); }
     else if (v === 'files') { showView('files'); setActiveTab('files'); loadFiles(currentPath); }
     else if (v === 'mail') { showView('mail'); setActiveTab('mail'); enterMail(); }
+  }
+  $('#mobile-tabbar').addEventListener('click', (e) => {
+    const b = e.target.closest('.tab-item');
+    if (!b) return;
+    navigateTo(b.dataset.tab);
   });
 
   // 文件：上传 / 新建文件夹
@@ -738,7 +755,7 @@ function bindEvents() {
         const chip = document.createElement('span');
         chip.className = 'attach-chip';
         chip.dataset.name = f.name; chip.dataset.type = f.type || 'application/octet-stream'; chip.dataset.content = base64;
-        chip.innerHTML = `<span>📎 ${escapeHTML(f.name)} (${fmtSize(f.size)})</span><button class="att-del" type="button">×</button>`;
+        chip.innerHTML = `<span><i class="ri-attachment-line"></i> ${escapeHTML(f.name)} (${fmtSize(f.size)})</span><button class="att-del" type="button">×</button>`;
         chip.querySelector('.att-del').addEventListener('click', () => chip.remove());
         $('#compose-attachments').appendChild(chip);
       };
@@ -844,23 +861,23 @@ let fileViewMode = 'list';
 let currentFsView = 'all';   // all | recent | trash
 
 const FILE_ICONS = {
-  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
-  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-  rename: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
-  del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>',
+  edit: '<i class="ri-edit-line"></i>',
+  download: '<i class="ri-download-2-line"></i>',
+  rename: '<i class="ri-edit-2-line"></i>',
+  del: '<i class="ri-delete-bin-6-line"></i>',
 };
 
 const FILE_GLYPH_SVG = {
-  dir:   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
-  word:  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>',
-  cell:  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 13h8v1H8v-1zm0 3h8v1H8v-1zm0-6h4v1H8v-1z"/></svg>',
-  slide: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>',
-  pdf:   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>',
-  image: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>',
-  video: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm14 4l4-2v10l-4-2V9z"/></svg>',
-  audio: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>',
-  archive:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3H3V5zm0 5h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9zm6 3h6v3H9v-3z"/></svg>',
-  other: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>',
+  dir:   '<i class="ri-folder-3-fill"></i>',
+  word:  '<i class="ri-file-text-fill"></i>',
+  cell:  '<i class="ri-file-excel-2-fill"></i>',
+  slide: '<i class="ri-file-ppt-2-fill"></i>',
+  pdf:   '<i class="ri-file-pdf-2-fill"></i>',
+  image: '<i class="ri-image-2-fill"></i>',
+  video: '<i class="ri-video-fill"></i>',
+  audio: '<i class="ri-music-2-fill"></i>',
+  archive:'<i class="ri-file-zip-fill"></i>',
+  other: '<i class="ri-file-3-fill"></i>',
 };
 
 const FILE_KIND_LABEL = {
@@ -1303,6 +1320,7 @@ function openNameSheet(mode, target, type) {
 function isFilesVisible() { return !$('#view-files').hidden; }
 function setActiveTab(v) {
   $('#nav-tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+  $('#mobile-tabbar').querySelectorAll('.tab-item').forEach((b) => b.classList.toggle('active', b.dataset.tab === v));
 }
 /* ═══════════════ 邮件 ═══════════════ */
 let mailAccounts = [];
@@ -1367,6 +1385,7 @@ async function enterMail() {
       $('#mail-folder-title').textContent = '邮件';
       $('#mail-read-pane').innerHTML = '<div class="mail-read-empty">请先添加邮件账户</div>';
       $('#mail-nav-badge').hidden = true;
+      const bm = $('#mail-nav-badge-m'); if (bm) bm.hidden = true;
     }
   } catch (e) {
     $('#mail-empty').hidden = false;
@@ -1377,7 +1396,7 @@ async function enterMail() {
 function renderMailAccounts() {
   const wrap = $('#mail-accounts');
   if (!mailAccounts.length) {
-    wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加邮件账户</button>';
+    wrap.innerHTML = '<button class="mail-add-account" id="btn-add-mailaccount"><i class="ri-add-line"></i> 添加邮件账户</button>';
   } else {
     wrap.innerHTML = mailAccounts.map((a) => `
       <button class="mail-account-item${mailCurrentAccount && mailCurrentAccount.id === a.id ? ' active' : ''}" data-id="${a.id}">
@@ -1385,12 +1404,12 @@ function renderMailAccounts() {
         <span class="ma-actions">
           <button class="ma-test" data-test="${a.id}" title="测试连接">测试</button>
           <button class="ma-edit" data-edit="${a.id}" title="编辑账户">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+            <i class="ri-edit-line"></i>
           </button>
           <button class="ma-del" data-del="${a.id}" title="删除账户">×</button>
         </span>
       </button>
-    `).join('') + '<button class="mail-add-account" id="btn-add-mailaccount">＋ 添加账户</button>';
+    `).join('') + '<button class="mail-add-account" id="btn-add-mailaccount"><i class="ri-add-line"></i> 添加账户</button>';
   }
   wrap.querySelectorAll('.mail-account-item').forEach((item) => {
     item.addEventListener('click', (e) => {
@@ -1456,7 +1475,7 @@ function showMailDiag(accId, r) {
     sheet.innerHTML = `
       <div class="sheet-head">
         <h3>IMAP 连接诊断</h3>
-        <button class="icon-btn close-btn" data-close aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="icon-btn close-btn" data-close aria-label="关闭"><i class="ri-close-line"></i></button>
       </div>
       <div class="sheet-body" id="mail-diag-body"></div>
     `;
@@ -1528,15 +1547,15 @@ function renderMailFolders() {
   };
   const sorted = folders.slice().sort((a, b) => rank(a.path) - rank(b.path));
   const ICO = {
-    inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
-    junk: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-    sent: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
-    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-    draft: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+    inbox: '<i class="ri-inbox-line"></i>',
+    junk: '<i class="ri-error-warning-line"></i>',
+    sent: '<i class="ri-send-plane-line"></i>',
+    trash: '<i class="ri-delete-bin-6-line"></i>',
+    draft: '<i class="ri-edit-line"></i>',
   };
   wrap.innerHTML = sorted.map((f) => {
     const l = f.path.toLowerCase();
-    let icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+    let icon = '<i class="ri-mail-line"></i>';
     if (l === 'inbox') icon = ICO.inbox;
     else if (/(junk|spam|垃圾)/.test(l)) icon = ICO.junk;
     else if (/(sent|已发送)/.test(l)) icon = ICO.sent;
@@ -1599,7 +1618,7 @@ async function readMail(uid) {
     const htmlBody = m.html || (m.text ? m.text.split('\n').map((l) => escapeHTML(l)).join('<br>') : '<p style="color:var(--text-3)">(无正文)</p>');
     const atts = (m.attachments || []).map((a, i) => `
       <button class="mr-att" data-dl="${i}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <i class="ri-attachment-line"></i>
         <span class="att-name">${escapeHTML(a.filename)}</span>
         <span class="att-size">${fmtSize(a.size)}</span>
       </button>
@@ -1700,11 +1719,14 @@ async function updateMailBadge() {
     let totalUnseen = 0;
     for (const a of data.accounts || []) totalUnseen += (a.unseen || 0);
     const badge = $('#mail-nav-badge');
+    const badgeM = $('#mail-nav-badge-m');
     if (totalUnseen > 0) {
-      badge.textContent = totalUnseen > 99 ? '99+' : totalUnseen;
-      badge.hidden = false;
+      const t = totalUnseen > 99 ? '99+' : totalUnseen;
+      badge.textContent = t; badge.hidden = false;
+      if (badgeM) { badgeM.textContent = t; badgeM.hidden = false; }
     } else {
       badge.hidden = true;
+      if (badgeM) badgeM.hidden = true;
     }
   } catch (e) { /* 静默失败 */ }
 }
