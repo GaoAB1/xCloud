@@ -50,14 +50,14 @@
         </div>
         <h1>欢迎回来</h1>
         <p class="auth-sub">登录以访问你的个人云盘。</p>
-        <form id="login-form" class="auth-form" novalidate>
+        <form id="login-form" class="auth-form" novalidate autocomplete="off">
           <label class="field">
             <span>用户名</span>
-            <input type="text" id="login-username" autocomplete="username" placeholder="用户名" required />
+            <input type="text" id="login-username" autocomplete="off" placeholder="用户名" required />
           </label>
           <label class="field">
             <span>密码</span>
-            <input type="password" id="login-password" autocomplete="current-password" placeholder="密码" required />
+            <input type="password" id="login-password" autocomplete="off" placeholder="密码" required />
           </label>
           <p class="field-error" id="login-error" hidden></p>
           <button type="submit" class="btn-primary">登录</button>
@@ -203,14 +203,14 @@
 
             <!-- 文件面板 -->
             <div class="files-panel" id="files-panel">
-              <div class="files-head">
+              <div class="files-head" id="files-head">
                 <span class="fh-check">
-                  <input type="checkbox" id="files-check-all" />
+                  <input type="checkbox" id="files-check-all" title="全选" />
                 </span>
-                <span class="fh-name">名称</span>
-                <span class="fh-kind">种类</span>
-                <span class="fh-size">大小</span>
-                <span class="fh-mtime">修改日期</span>
+                <span class="fh-name sortable" data-sort="name" title="点击按名称排序">名称</span>
+                <span class="fh-kind sortable" data-sort="kind" title="点击按种类排序">种类</span>
+                <span class="fh-size sortable" data-sort="size" title="点击按大小排序">大小</span>
+                <span class="fh-mtime sortable sorted-desc" data-sort="mtime" title="点击按修改日期排序">修改日期</span>
                 <span class="fh-actions"></span>
               </div>
               <ul class="files-list" id="files-list"></ul>
