@@ -45,6 +45,17 @@ function toast(msg) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
+// 清空登录表单：退出登录 / Session 过期 / 401 重定向时调用
+// 避免浏览器记住的账号密码残留在登录页输入框中
+function clearLoginForm() {
+  const u = $('#login-username');
+  const p = $('#login-password');
+  const err = $('#login-error');
+  if (u) u.value = '';
+  if (p) p.value = '';
+  if (err) { err.hidden = true; err.textContent = ''; }
+}
+
 function showView(name) {
   $('#view-setup').hidden = name !== 'setup';
   $('#view-login').hidden = name !== 'login';
@@ -53,6 +64,8 @@ function showView(name) {
   $('#view-dashboard').hidden = name !== 'home';
   $('#view-files').hidden = name !== 'files';
   $('#view-mail').hidden = name !== 'mail';
+  // 回到登录页时清空凭据（覆盖主动退出 / Session 过期 / 401 重定向）
+  if (name === 'login') clearLoginForm();
 }
 
 function setSegActive(seg, activeBtn) {
@@ -480,6 +493,8 @@ function bindEvents() {
         method: 'POST',
         body: { username: $('#login-username').value.trim(), password: $('#login-password').value },
       });
+      // 登录成功立即清除输入框中的密码，不把口令留在 DOM 里
+      $('#login-password').value = '';
       enterDashboard();
     } catch (msg) { showErr(err, msg.message); }
     btn.disabled = false;
@@ -639,6 +654,16 @@ function bindEvents() {
   const moreBtn = document.getElementById('btn-files-more');
   if (moreBtn) moreBtn.addEventListener('click', () => toast('更多操作：暂未实现'));
 
+  // 文件表头点击排序
+  const filesHead = $('#files-head');
+  if (filesHead) {
+    filesHead.addEventListener('click', (e) => {
+      const th = e.target.closest('.sortable');
+      if (!th) return;
+      sortFilesBy(th.dataset.sort);
+    });
+  }
+
   // 文件列表事件委托
   $('#files-list').addEventListener('click', (e) => {
     const actionBtn = e.target.closest('[data-act]');
@@ -658,11 +683,21 @@ function bindEvents() {
       else if (act === 'download') downloadFile(rel);
       else if (act === 'rename') openNameSheet('rename', rel, row.dataset.type);
       else if (act === 'del') deleteFile(rel);
+      else if (act === 'restore') restoreFromTrash(rel);
+      else if (act === 'purge') purgeFromTrash(rel);
       return;
     }
     // 普通点击：先判断是否已经有选中项 —— 有则切换选中，无则进入或下载
     if (selectedFiles.size > 0) {
       toggleSelectRow(row);
+      return;
+    }
+    // 回收站行：无默认点击行为（只能用恢复/彻底删除按钮）
+    if (row.classList.contains('trash-row')) return;
+    // 近期文件视图（跨目录）：编辑或下载，不进入目录
+    if (currentFsView === 'recent') {
+      if (row.dataset.editable === '1') editFile(rel);
+      else downloadFile(rel);
       return;
     }
     if (row.dataset.type === 'dir') loadFiles(rel);
@@ -872,20 +907,33 @@ const FILE_KIND_LABEL = {
 function fileIconClass(item) {
   if (item.type === 'dir') return 'dir';
   const e = item.ext;
-  if (['docx', 'doc', 'odt', 'rtf', 'txt', 'md'].includes(e)) return 'word';
-  if (['xlsx', 'xls', 'ods', 'csv'].includes(e)) return 'cell';
-  if (['pptx', 'ppt', 'odp'].includes(e)) return 'slide';
-  if (e === 'pdf') return 'pdf';
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(e)) return 'image';
-  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(e)) return 'video';
-  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(e)) return 'audio';
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(e)) return 'archive';
-  return 'other';
+  // 扩展名 → 类型 缓存（避免大目录里重复判断）
+  if (fileKindCache.has(e)) return fileKindCache.get(e);
+  let k = 'other';
+  if (['docx', 'doc', 'odt', 'rtf', 'txt', 'md'].includes(e)) k = 'word';
+  else if (['xlsx', 'xls', 'ods', 'csv'].includes(e)) k = 'cell';
+  else if (['pptx', 'ppt', 'odp'].includes(e)) k = 'slide';
+  else if (e === 'pdf') k = 'pdf';
+  else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(e)) k = 'image';
+  else if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(e)) k = 'video';
+  else if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(e)) k = 'audio';
+  else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(e)) k = 'archive';
+  fileKindCache.set(e, k);
+  return k;
 }
+const fileKindCache = new Map();
+
+// 时间格式化缓存（同一 mtime 只格式化一次，大目录显著提速）
+const mtimeCache = new Map();
 function formatMtime(ms) {
+  const hit = mtimeCache.get(ms);
+  if (hit !== undefined) return hit;
   const d = new Date(ms);
   const p = (n) => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  const s = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  if (mtimeCache.size > 500) mtimeCache.clear(); // 防止无限增长
+  mtimeCache.set(ms, s);
+  return s;
 }
 function joinPath(dir, name) {
   if (dir === '/' || dir === '') return '/' + name;
@@ -941,21 +989,18 @@ async function loadRecent() {
       $('#files-empty').textContent = '暂无文件';
       return;
     }
-    // 按天分组
+    // 按天分组（单次构建 HTML，避免逐行插入）
+    let html = '';
     const groups = groupByTime(data.items);
     for (const g of groups) {
-      const head = document.createElement('li');
-      head.className = 'file-group';
-      head.textContent = g.label;
-      ul.appendChild(head);
+      html += '<li class="file-group">' + escapeHTML(g.label) + '</li>';
       for (const item of g.items) {
         const rel = '/' + item.name;
-        const kindClass = fileIconClass(item);
-        ul.appendChild(fileRowEl(item, rel, kindClass));
+        html += fileRowHTML(item, rel, fileIconClass(item));
       }
     }
-    // 近期文件点击直接下载（跨目录）
-    bindRecentListEvents();
+    ul.innerHTML = html;
+    // 近期文件点击直接下载/编辑（跨目录）—— 由 #files-list 统一事件委托处理
   } catch (e) {
     ul.innerHTML = '';
     $('#files-empty').hidden = false;
@@ -963,26 +1008,7 @@ async function loadRecent() {
   }
 }
 
-// 近期文件行：点击下载/编辑，操作列提供下载
-function bindRecentListEvents() {
-  $('#files-list').querySelectorAll('.file-row').forEach((row) => {
-    row.addEventListener('click', (e) => {
-      const actionBtn = e.target.closest('[data-act]');
-      const checkBox = e.target.closest('input[type="checkbox"]');
-      if (checkBox) { e.stopPropagation(); toggleSelectRow(row); return; }
-      if (actionBtn) {
-        const act = actionBtn.dataset.act;
-        if (act === 'download') downloadFile(row.dataset.path);
-        else if (act === 'edit') editFile(row.dataset.path);
-        else if (act === 'del') { /* 近期列表不提供删除 */ }
-        return;
-      }
-      if (selectedFiles.size > 0) { toggleSelectRow(row); return; }
-      if (row.dataset.editable === '1') editFile(row.dataset.path);
-      else downloadFile(row.dataset.path);
-    });
-  });
-}
+// 近期/回收站行的点击行为已统一由 #files-list 事件委托处理（避免逐行绑定）
 
 async function loadTrash() {
   $('#files-hero-title').textContent = '回收站';
@@ -1000,43 +1026,39 @@ async function loadTrash() {
       $('#files-empty').textContent = '回收站为空';
       return;
     }
+    // 单次构建 HTML（原逐行 createElement + 逐行绑定事件，大回收站会明显卡顿）
+    let html = '';
     for (const item of data.items) {
-      const li = document.createElement('li');
-      li.className = 'file-row trash-row';
-      li.dataset.path = item.name;
       const kindClass = fileIconClass({ type: 'file', ext: item.ext });
       const actions = [
         '<button class="icon-btn" data-act="restore" title="恢复">' + FILE_ICONS.download + '</button>',
         '<button class="icon-btn" data-act="purge" title="彻底删除">' + FILE_ICONS.del + '</button>',
       ];
-      const nameTitle = escapeHTML(item.name);
-      li.innerHTML = [
-        '<span class="file-check"><input type="checkbox" aria-label="选择"/></span>',
-        '<span class="file-icon">',
-          '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>',
-          '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '</span>',
-        '</span>',
-        '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>',
-        '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>',
-        '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
-        '<span class="file-actions">' + actions.join('') + '</span>'
-      ].join('');
-      li.addEventListener('click', (e) => {
-        const actionBtn = e.target.closest('[data-act]');
-        if (actionBtn) {
-          const act = actionBtn.dataset.act;
-          if (act === 'restore') trashRestore(item.name);
-          else if (act === 'purge') trashPurge(item.name);
-        }
-      });
-      ul.appendChild(li);
+      const nm = escapeHTML(item.name);
+      html += '<li class="file-row trash-row" data-path="' + escapeHTML(item.name) + '">'
+        + '<span class="file-check"><input type="checkbox" aria-label="选择"/></span>'
+        + '<span class="file-icon">'
+          + '<span class="file-icon-bg ' + kindClass + '">' + (FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other) + '</span>'
+          + '<span class="file-name" title="' + nm + '">' + nm + '</span>'
+        + '</span>'
+        + '<span class="file-kind">' + escapeHTML(FILE_KIND_LABEL[kindClass] || '文件') + '</span>'
+        + '<span class="file-size">' + escapeHTML(item.sizeText || '—') + '</span>'
+        + '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>'
+        + '<span class="file-actions">' + actions.join('') + '</span>'
+        + '</li>';
     }
+    ul.innerHTML = html;
+    // 恢复/彻底删除由 #files-list 统一事件委托处理
   } catch (e) {
     ul.innerHTML = '';
     $('#files-empty').hidden = false;
     $('#files-empty').textContent = '加载失败：' + e.message;
   }
 }
+
+// 委托调用入口（供表头事件委托复用）
+function restoreFromTrash(name) { trashRestore(name); }
+function purgeFromTrash(name) { trashPurge(name); }
 
 async function trashRestore(name) {
   try {
@@ -1125,12 +1147,59 @@ function groupByTime(items) {
   return groups;
 }
 
-function fileRowEl(item, fullPath, kindClass) {
-  const li = document.createElement('li');
-  li.className = 'file-row' + (selectedFiles.has(fullPath) ? ' selected' : '');
-  li.dataset.path = fullPath;
-  li.dataset.type = item.type;
-  li.dataset.editable = item.editable ? '1' : '';
+/* ── 排序 ──────────────────────────────────────────────────────── */
+// 当前文件列表数据与排序状态（排序在前端完成，无需重新请求接口）
+let currentFileData = null;
+let fileSort = { key: 'mtime', dir: 'desc' }; // key: name|kind|size|mtime
+
+// 用中文排序规则比较字符串（数字按数值大小：a2 < a10）
+const nameCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+function cmpName(a, b) { return nameCollator.compare(String(a.name), String(b.name)); }
+
+function sortFileItems(items) {
+  const { key, dir } = fileSort;
+  const sign = dir === 'asc' ? 1 : -1;
+  return items.slice().sort((a, b) => {
+    // 文件夹始终排在最前
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    let r = 0;
+    if (key === 'name') r = cmpName(a, b);
+    else if (key === 'size') r = (a.size || 0) - (b.size || 0);
+    else if (key === 'kind') {
+      const ka = FILE_KIND_LABEL[fileIconClass(a)] || '文件';
+      const kb = FILE_KIND_LABEL[fileIconClass(b)] || '文件';
+      r = nameCollator.compare(ka, kb);
+    } else r = (a.mtime || 0) - (b.mtime || 0);
+    if (r === 0) r = cmpName(a, b); // 稳定兜底：同名/同值按名称排
+    return r * sign;
+  });
+}
+
+// 点击表头排序：同列切换升降序，换列则用该列默认方向
+function sortFilesBy(key) {
+  if (fileSort.key === key) {
+    fileSort.dir = fileSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    fileSort.key = key;
+    // 名称/种类默认升序，大小/时间默认降序（符合直觉）
+    fileSort.dir = (key === 'name' || key === 'kind') ? 'asc' : 'desc';
+  }
+  updateSortIndicator();
+  if (currentFileData) renderFiles(currentFileData);
+}
+
+function updateSortIndicator() {
+  const head = $('#files-head');
+  if (!head) return;
+  head.querySelectorAll('.sortable').forEach((el) => {
+    const isActive = el.dataset.sort === fileSort.key;
+    el.classList.toggle('sorted-asc', isActive && fileSort.dir === 'asc');
+    el.classList.toggle('sorted-desc', isActive && fileSort.dir === 'desc');
+  });
+}
+
+// 生成单行 HTML 字符串（比 createElement + innerHTML 快得多）
+function fileRowHTML(item, fullPath, kindClass) {
   const isDir = item.type === 'dir';
   const kindLabel = FILE_KIND_LABEL[kindClass] || '文件';
   const checked = selectedFiles.has(fullPath) ? 'checked' : '';
@@ -1140,49 +1209,68 @@ function fileRowEl(item, fullPath, kindClass) {
   actions.push('<button class="icon-btn" data-act="download" title="下载">' + FILE_ICONS.download + '</button>');
   actions.push('<button class="icon-btn" data-act="rename" title="重命名">' + FILE_ICONS.rename + '</button>');
   actions.push('<button class="icon-btn" data-act="del" title="删除">' + FILE_ICONS.del + '</button>');
-  const svgGlyph = FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other;
-  const nameTitle = escapeHTML(item.name);
-  const kindInline = escapeHTML(subInfo);
-  li.innerHTML = [
-    '<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>',
-    '<span class="file-icon">',
-      '<span class="file-icon-bg ' + kindClass + '">' + svgGlyph + '</span>',
-      '<span class="file-name" title="' + nameTitle + '">' + nameTitle + '<span class="file-kind-inline">' + kindInline + '</span></span>',
-    '</span>',
-    '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>',
-    '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>',
-    '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>',
-    '<span class="file-actions">' + actions.join('') + '</span>'
-  ].join("");
-  return li;
+  const glyph = FILE_GLYPH_SVG[kindClass] || FILE_GLYPH_SVG.other;
+  const name = escapeHTML(item.name);
+  return '<li class="file-row' + (selectedFiles.has(fullPath) ? ' selected' : '') + '"'
+    + ' data-path="' + escapeHTML(fullPath) + '"'
+    + ' data-type="' + escapeHTML(item.type) + '"'
+    + ' data-editable="' + (item.editable ? '1' : '') + '">'
+    + '<span class="file-check"><input type="checkbox" ' + checked + ' aria-label="选择"/></span>'
+    + '<span class="file-icon">'
+      + '<span class="file-icon-bg ' + kindClass + '">' + glyph + '</span>'
+      + '<span class="file-name" title="' + name + '">' + name + '<span class="file-kind-inline">' + escapeHTML(subInfo) + '</span></span>'
+    + '</span>'
+    + '<span class="file-kind">' + escapeHTML(kindLabel) + '</span>'
+    + '<span class="file-size">' + (isDir ? '—' : escapeHTML(item.sizeText || '—')) + '</span>'
+    + '<span class="file-mtime">' + formatMtime(item.mtime) + '</span>'
+    + '<span class="file-actions">' + actions.join('') + '</span>'
+    + '</li>';
 }
 
 function renderFiles(data) {
+  currentFileData = data; // 缓存数据，供排序复用（避免重复请求接口）
   const ul = $('#files-list');
-  ul.innerHTML = "";
-  const groups = groupByTime(data.items);
-  if (groups.length === 0) {
+  const items = (data && data.items) || [];
+  if (items.length === 0) {
+    ul.innerHTML = '';
     $('#files-empty').hidden = false;
     $('#files-panel').hidden = true;
     $('#files-check-all').checked = false;
     updateSelectionUI();
     return;
   }
-  $('#files-empty').hidden = true;
-  $('#files-panel').hidden = false;
+  const sorted = sortFileItems(items);
+  const base = data.path;
+  let html = '';
   const allPaths = [];
-  for (const g of groups) {
-    const groupHead = document.createElement('li');
-    groupHead.className = 'file-group';
-    groupHead.textContent = g.label;
-    ul.appendChild(groupHead);
-    for (const item of g.items) {
-      const rel = joinPath(data.path, item.name);
-      const kindClass = fileIconClass(item);
-      ul.appendChild(fileRowEl(item, rel, kindClass));
+  // 仅按修改时间排序时才按时间段分组；其他排序方式平铺（分组会打乱排序）
+  if (fileSort.key === 'mtime') {
+    const groups = [];
+    let lastBucket = null;
+    for (const it of sorted) {
+      const b = timeBucketLabel(it.mtime);
+      if (b !== lastBucket) { groups.push({ label: b, items: [] }); lastBucket = b; }
+      groups[groups.length - 1].items.push(it);
+    }
+    for (const g of groups) {
+      html += '<li class="file-group">' + escapeHTML(g.label) + '</li>';
+      for (const it of g.items) {
+        const rel = joinPath(base, it.name);
+        html += fileRowHTML(it, rel, fileIconClass(it));
+        allPaths.push(rel);
+      }
+    }
+  } else {
+    for (const it of sorted) {
+      const rel = joinPath(base, it.name);
+      html += fileRowHTML(it, rel, fileIconClass(it));
       allPaths.push(rel);
     }
   }
+  // 单次 innerHTML 赋值：一次性完成整棵列表的构建，避免逐行插入触发大量重排
+  ul.innerHTML = html;
+  $('#files-empty').hidden = true;
+  $('#files-panel').hidden = false;
   const allBox = $('#files-check-all');
   if (allBox) {
     allBox.checked = selectedFiles.size > 0 && selectedFiles.size === allPaths.length;
