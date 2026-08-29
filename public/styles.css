@@ -798,6 +798,35 @@ h4 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 
 .fh-mtime { text-align: right; }
 .fh-actions {}
 
+/* 表头排序（可点击） */
+.files-head .sortable {
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer; user-select: none;
+  border-radius: 6px; padding: 2px 4px; margin: -2px -4px;
+  transition: background .15s, color .15s;
+}
+.files-head .sortable:hover { background: rgba(0,0,0,0.05); color: var(--text-body); }
+[data-theme="dark"] .files-head .sortable:hover { background: rgba(255,255,255,0.08); }
+/* 右对齐列（大小/修改日期）内容靠右 */
+.files-head .fh-size.sortable, .files-head .fh-mtime.sortable { justify-content: flex-end; }
+/* 排序箭头：默认显示淡色向上三角，激活列高亮并显示方向 */
+.files-head .sortable::after {
+  content: ''; width: 0; height: 0; flex: none;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: .28;
+  transition: opacity .15s, transform .15s;
+}
+.files-head .sortable:hover::after { opacity: .6; }
+.files-head .sortable.sorted-asc { color: var(--accent); }
+.files-head .sortable.sorted-desc { color: var(--accent); }
+.files-head .sortable.sorted-asc::after { opacity: 1; border-top: 5px solid currentColor; }
+.files-head .sortable.sorted-desc::after {
+  opacity: 1;
+  border-top: none;
+  border-bottom: 5px solid currentColor;
+}
+
 /* 文件列表 */
 .files-list { list-style: none; }
 
