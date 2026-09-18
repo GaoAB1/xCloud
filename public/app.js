@@ -1837,7 +1837,7 @@ function preheatOnlyOffice() {
       if (frame.parentNode) frame.parentNode.removeChild(frame);
       if (!mark) { try { sessionStorage.removeItem('oo_preheated'); } catch { /* ignore */ } }
     };
-    frame.onload = () => setTimeout(() => cleanup(true), 5000);
+    frame.onload = () => setTimeout(() => { cleanup(true); toast('⚡ 编辑器资源预热完成，打开文档更快'); }, 5000);
     frame.onerror = () => cleanup(false);
     setTimeout(() => { if (frame.parentNode) cleanup(false); }, 90000);
     document.body.appendChild(frame);
