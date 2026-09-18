@@ -7,208 +7,68 @@
 ---
 
 **Project:** xCloud
-**Generated:** 2026-09-02 13:26:53
-**Category:** Productivity Tool
+**Generated:** 2026-09-02 21:50:00
+**Category:** Productivity Tool · 个人云盘/管理面板
+**Style Source:** `DESIGN.md`（Cal.com 设计语言重构）—— 白画布 + 墨黑主 CTA + 近单色品牌、扁平卡片、发丝描边、层级圆角 8·12·16·pill、柔和微阴影。无玻璃、无渐变、无重阴影。
 
 ---
 
 ## Global Rules
 
-### Color Palette
+### Color Palette（Light）
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
-| Primary | `#0D9488` | `--color-primary` |
-| On Primary | `#000000` | `--color-on-primary` |
-| Secondary | `#14B8A6` | `--color-secondary` |
-| On Secondary | `#0F172A` | `--color-on-secondary` |
-| Accent/CTA | `#EA580C` | `--color-accent` |
-| On Accent/CTA | `#000000` | `--color-on-accent` |
-| Background | `#F0FDFA` | `--color-background` |
-| Foreground | `#134E4A` | `--color-foreground` |
-| Card | `#FFFFFF` | `--color-card` |
-| Card Foreground | `#134E4A` | `--color-card-foreground` |
-| Muted | `#E8F1F4` | `--color-muted` |
-| Muted Foreground | `#475569` | `--color-muted-foreground` |
-| Border | `#99F6E4` | `--color-border` |
-| Destructive | `#DC2626` | `--color-destructive` |
-| On Destructive | `#FFFFFF` | `--color-on-destructive` |
-| Ring | `#0D9488` | `--color-ring` |
+| Primary (CTA) | `#111111` | `--primary` |
+| Primary Active | `#242424` | `--primary-active` |
+| Ink / 标题 | `#111111` | `--ink` |
+| Body | `#374151` | `--body` |
+| Muted | `#6b7280` | `--muted` |
+| Hairline | `#e5e7eb` | `--hairline` |
+| Canvas（页面底色） | `#ffffff` | `--canvas` |
+| Surface Soft / 悬停 | `#f8f9fa` | `--surface-soft` |
+| Surface Card / 灰卡 | `#f5f5f5` | `--surface-card` |
+| Surface Dark（footer） | `#101010` | `--surface-dark` |
+| Accent（稀有点缀） | `#3b82f6` | `--accent` |
+| Success / Warning / Error | `#10b981` / `#f59e0b` / `#ef4444` | `--success/--warning/--error` |
 
-**Color Notes:** Teal focus + action orange [Accent adjusted from #F97316]
+### Dark Theme
+
+以 surface-dark 语言反转：canvas `#101010`、surface `#1a1a1d`、ink `#f4f4f5`、主 CTA 反白为白底黑字（`--on-primary:#101010`）。
 
 ### Typography
 
-- **Heading Font:** Plus Jakarta Sans
-- **Body Font:** Plus Jakarta Sans
-- **Mood:** friendly, modern, saas, clean, approachable, professional
-- **Google Fonts:** [Plus Jakarta Sans + Plus Jakarta Sans](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap)
+- **Display（时钟/大标题）**：600 weight、负字距 `-0.02 ~ -0.04em`（Cal Sans 替代规则：Inter/system 600）
+- **UI / 正文**：system stack（Segoe UI / PingFang SC / Microsoft YaHei fallback），14-15px，行高 1.5
+- 标题从不使用 700+；按钮文字 14px/600
 
-**CSS Import:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
-```
+### Radius（层级）
 
-### Spacing Variables
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--r-md` | 8px | 按钮 / 输入框 |
+| `--r-card` | 12px | 内容卡片（应用瓦片、弹层） |
+| `--r-panel` | 16px | hero mockup / 大容器 |
+| `--r-pill` | 9999px | seg 分段、nav 标签、徽章 |
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-xs` | `4px` / `0.25rem` | Tight gaps |
-| `--space-sm` | `8px` / `0.5rem` | Icon gaps, inline spacing |
-| `--space-md` | `16px` / `1rem` | Standard padding |
-| `--space-lg` | `24px` / `1.5rem` | Section padding |
-| `--space-xl` | `32px` / `2rem` | Large gaps |
-| `--space-2xl` | `48px` / `3rem` | Section margins |
-| `--space-3xl` | `64px` / `4rem` | Hero padding |
+### Elevation
 
-### Shadow Depths
+- 普通卡片：`0 1px 2px rgba(0,0,0,0.05)`（`--sh-1`）
+- 悬浮/浮层：叠加 `0 4px 12px rgba(0,0,0,0.08)`（`--sh-2`）；popover/sheet `--sh-overlay`
+- **唯一深色块**：footer `.foot`（Cal 签名式深色收尾），浅色主题下为 `#101010`
 
-| Level | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` | Subtle lift |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.1)` | Cards, buttons |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.1)` | Modals, dropdowns |
-| `--shadow-xl` | `0 20px 25px rgba(0,0,0,0.15)` | Hero images, featured cards |
+### 语义要点（保留自 DESIGN.md）
+
+- 蓝色 `#3b82f6` 只在未读圆点等小徽标出现，不用于主按钮/大面积高亮
+- 选中态（文件行/侧栏）使用墨黑反白而非蓝色：featured-tier 反色逻辑
+- 文件类型图标：平面色块（badge-pastel 语义），无渐变
+- 焦点环：墨黑 `--focus-ring`（深色主题自动反白），全站 `:focus-visible`
 
 ---
 
-## Component Specs
+## Implementation Status
 
-### Buttons
-
-```css
-/* Primary Button */
-.btn-primary {
-  background: #EA580C;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-/* Secondary Button */
-.btn-secondary {
-  background: transparent;
-  color: #0D9488;
-  border: 2px solid #0D9488;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-```
-
-### Cards
-
-```css
-.card {
-  background: #F0FDFA;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-md);
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
-}
-```
-
-### Inputs
-
-```css
-.input {
-  padding: 12px 16px;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 200ms ease;
-}
-
-.input:focus {
-  border-color: #0D9488;
-  outline: none;
-  box-shadow: 0 0 0 3px #0D948820;
-}
-```
-
-### Modals
-
-```css
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: var(--shadow-xl);
-  max-width: 500px;
-  width: 90%;
-}
-```
-
----
-
-## Style Guidelines
-
-**Style:** Flat Design
-
-**Keywords:** 2D, minimalist, bold colors, no shadows, clean lines, simple shapes, typography-focused, modern, icon-heavy
-
-**Best For:** Web apps, mobile apps, cross-platform, startup MVPs, user-friendly, SaaS, dashboards, corporate
-
-**Key Effects:** No gradients/shadows, simple hover (color/opacity shift), fast loading, clean transitions (150-200ms ease), minimal icons
-
-### Page Pattern
-
-**Pattern Name:** Product Demo + Features
-
-- **Conversion Strategy:** Use an interactive demo only when it explains value better than static media. Provide captions, transcript, visible play/pause controls, and a non-video fallback; do not autoplay under reduced motion. Pause media when offscreen or hidden and keep the final product state available as static content.
-- **CTA Placement:** Video center + CTA right/bottom
-- **Section Order:** Hero > Product video/mockup (center) > Feature breakdown per section > Comparison (optional) > CTA
-
----
-
-## Anti-Patterns (Do NOT Use)
-
-- ❌ Complex onboarding
-- ❌ Slow performance
-
-### Additional Forbidden Patterns
-
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
-
----
-
-## Pre-Delivery Checklist
-
-Before delivering any UI code, verify:
-
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] `cursor-pointer` on all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] Light mode: text contrast 4.5:1 minimum
-- [ ] Focus states visible for keyboard navigation
-- [ ] `prefers-reduced-motion` respected
-- [ ] Responsive: 375px, 768px, 1024px, 1440px
-- [ ] No content hidden behind fixed navbars
-- [ ] No horizontal scroll on mobile
+- `public/styles.css`：整体重构完成（class 名与 DOM 未动，app.js 逻辑未动）
+- `public/app.js`：仅更新默认图标色 `#111111` 与 `PALETTE` 12 色为 Cal 系色值
+- `public/index.html`：favicon 墨黑圆角方块 + theme-color `#ffffff`
+- IE 兼容（`classic.html/css/js`）与 `edit.html`：**未改动**

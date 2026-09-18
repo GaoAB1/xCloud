@@ -14,7 +14,7 @@ let editingAppId = null;
 let appImageDataURL = null; // 应用图标新上传的 dataURL
 let weatherUnit = 'c';
 
-const PALETTE = ['#0071e3', '#5e5ce6', '#0a84ff', '#30d158', '#34c759', '#ff9500', '#ff3b30', '#ff2d55', '#af52de', '#5856d6', '#64d2ff', '#a2845e'];
+const PALETTE = ['#111111', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#fb923c', '#34d399', '#0ea5e9', '#14b8a6', '#6b7280'];
 
 /* ── 基础工具 ──────────────────────────────────────────────────── */
 function escapeHTML(s) {
@@ -179,7 +179,7 @@ function appIconHTML(app, sizeClass) {
     return `<div class="${cls}"><img src="${escapeHTML(app.icon_value)}" alt="" loading="lazy"></div>`;
   }
   const letter = (app.name || '?')[0];
-  return `<div class="${cls}" style="background:${escapeHTML(app.color || '#0071e3')}">${escapeHTML(letter.toUpperCase())}</div>`;
+  return `<div class="${cls}" style="background:${escapeHTML(app.color || '#111111')}">${escapeHTML(letter.toUpperCase())}</div>`;
 }
 
 function renderApps() {
@@ -358,7 +358,7 @@ async function submitApp(e) {
   const body = {
     name, url_internal: internal, url_external: external,
     icon_type: type, icon_value,
-    color: type === 'letter' ? selectedColor() : '#0071e3',
+    color: type === 'letter' ? selectedColor() : '#111111',
   };
   try {
     if (editingAppId) await api(`/api/apps/${editingAppId}`, { method: 'PUT', body });
