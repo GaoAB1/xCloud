@@ -32,6 +32,10 @@ const TRASH_DIR = path.join(DATA_DIR, 'trash'); // 回收站
 
 // OnlyOffice / 部署配置
 const ONLYOFFICE_URL = (process.env.ONLYOFFICE_URL || 'http://localhost:8080').replace(/\/+$/, '');
+// ⚡ 浏览器侧内网直连 DS 的地址（如 http://192.168.x.x:8080）。
+//   文件页切「内网」时，编辑器静态资源（sdk 内核 20MB+）走局域网，秒级加载；
+//   不配置则一律用 ONLYOFFICE_URL（外网/慢链路时大资源可能超编辑器看门狗）。
+const ONLYOFFICE_URL_INTERNAL = (process.env.ONLYOFFICE_URL_INTERNAL || '').replace(/\/+$/, '');
 const ONLYOFFICE_INTERNAL_URL = (process.env.ONLYOFFICE_INTERNAL_URL || '').replace(/\/+$/, '');
 const PANEL_URL = (process.env.PANEL_URL || '').replace(/\/+$/, '');
 const JWT_SECRET = process.env.JWT_SECRET || 'xcloud-change-me-please';
@@ -1380,7 +1384,13 @@ async function handleAPI(req, res, pathname, url) {
     config.token = signJWT(config);
     // ⚡ healthcheck 结果缓存 60s（后台刷新）：打开文件时不再串行等待探测（此前最多阻塞 2.5s）
     const onlyofficeUp = ooProbe.up;
-    return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, onlyofficeUp, config });
+    // ⚡ 浏览器侧 DS 地址按网络模式选择：
+    //   body.net = 'internal'（文件页切「内网」）→ 用内网直连地址（局域网带宽下 20MB+ 编辑器资源秒级加载）
+    //   body.net = 'external' 或未配置内网地址 → 用 ONLYOFFICE_URL（外网域名/默认）
+    //   注意：这只影响浏览器加载编辑器静态资源；document.url / callbackUrl 仍走 PANEL_URL（DS 容器内访问面板），不受影响。
+    const net = String(body.net || '');
+    const browserOO = (net === 'internal' && ONLYOFFICE_URL_INTERNAL) ? ONLYOFFICE_URL_INTERNAL : ONLYOFFICE_URL;
+    return sendJSON(res, 200, { onlyofficeUrl: browserOO, onlyofficeUp, config });
   }
 
   return sendError(res, 404, '接口不存在');
@@ -1447,8 +1457,12 @@ function serveStatic(req, res, pathname) {
     const ext = path.extname(filePath).toLowerCase();
     let out = data;
     // 编辑页：注入 OnlyOffice 地址 → 浏览器可在请求 config 的同时并行预下载 api.js，加速编辑器加载
+    // ⚡ 按请求来源 host 推断内外网：内网 IP 访问时优先注入内网直连地址（局域网带宽下编辑器资源秒级加载）
     if (pathname === '/edit.html') {
-      const safe = String(ONLYOFFICE_URL || '').replace(/</g, '\\u003c');
+      const reqHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().split(':')[0];
+      const isLan = reqHost === '::1' || /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(reqHost) || /\.local$/i.test(reqHost);
+      const injectUrl = (isLan && ONLYOFFICE_URL_INTERNAL) ? ONLYOFFICE_URL_INTERNAL : ONLYOFFICE_URL;
+      const safe = String(injectUrl || '').replace(/</g, '\\u003c');
       out = Buffer.from(data.toString('utf8').replace('window.__OO_URL__ = "";', `window.__OO_URL__ = ${JSON.stringify(safe)};`), 'utf8');
     }
     res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': out.length });

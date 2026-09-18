@@ -12,6 +12,10 @@ services:
       - PORT=3000
       # 浏览器加载 OnlyOffice api.js 用的地址（公网 https://office.soulan.top，内网 http://NAS_IP:8080）
       - ONLYOFFICE_URL=${ONLYOFFICE_URL:-http://localhost:8080}
+      # ⚡ 浏览器侧内网直连 DS 地址（文件页切「内网」时生效）。
+      #   编辑器 sdk 内核 20MB+，外网穿透链路带宽不足会超看门狗报 "connection is too slow"；
+      #   配置后内网模式下资源走局域网秒级加载。示例：ONLYOFFICE_URL_INTERNAL=http://192.168.1.10:8080
+      - ONLYOFFICE_URL_INTERNAL=${ONLYOFFICE_URL_INTERNAL:-}
       # 面板容器 → OnlyOffice 容器的内部地址（Docker 网络，固定容器名 + 容器端口 80）
       - ONLYOFFICE_INTERNAL_URL=http://onlyoffice
       # OnlyOffice 容器 → 面板容器的内部地址（OnlyOffice 拉取文档 & 发送保存回调用）

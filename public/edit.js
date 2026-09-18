@@ -89,6 +89,40 @@ function autoRetrySlowConn(desc) {
   return true;
 }
 
+/* ── 编辑器初始化看门狗（前端兜底） ───────────────────────────
+   DocEditor 创建后 iframe 内要拉取 20MB+ 的 sdk 内核；api.js 秒下
+   但 iframe 资源迟迟不完 = 链路带宽不足（外网穿透典型 ~1Mbps）。
+   等待期间动态显示秒数；45s 未就绪自动重载一次（资源已入 HTTP 缓存）。 */
+let initWatchTimer = null;
+function stopInitWatch() {
+  if (initWatchTimer) { clearInterval(initWatchTimer); initWatchTimer = null; }
+}
+function startInitWatch() {
+  stopInitWatch();
+  let waited = 0;
+  initWatchTimer = setInterval(function () {
+    waited += 1;
+    if (currentStageEl) {
+      currentStageEl.innerHTML =
+        '编辑器初始化（加载 sdk 内核，资源较大）… ' +
+        '<span style="font-size:12px;color:#a1a1aa">已等待 ' + waited + 's</span>';
+    }
+    if (waited >= 45) {
+      stopInitWatch();
+      if (!autoRetrySlowConn('编辑器初始化超时(45s)')) {
+        showError(
+          '编辑器加载超时（sdk 内核未在超时窗口内载入）。<br>' +
+          'api.js 秒下但内核拉不完 = 当前链路带宽不足（外网穿透典型现象）。<br><br>' +
+          '建议：<br>' +
+          '1. 在面板顶部切换到「内网」模式后重新打开（需在 compose 配置 ONLYOFFICE_URL_INTERNAL 指向 NAS 内网地址）；<br>' +
+          '2. 或在内网环境访问面板。<br>' +
+          '<a href="javascript:history.back()">返回</a>'
+        );
+      }
+    }
+  }, 1000);
+}
+
 function loadEditor(ooUrl, config) {
   const base = ooUrl.replace(/\/+$/, '');
   const apiUrl = base + '/web-apps/apps/api/documents/api.js';
@@ -98,6 +132,7 @@ function loadEditor(ooUrl, config) {
     // 编辑器 UI 真正就绪后再隐藏加载遮罩（onAppReady 触发即代表 iframe 已渲染出界面）
     onAppReady: function () {
       markStage('编辑器初始化');
+      stopInitWatch();
       console.log('[OnlyOffice] app ready');
       hideLoading();
     },
@@ -123,9 +158,11 @@ function loadEditor(ooUrl, config) {
 
   function mount() {
     markStage('编辑器初始化');
+    startInitWatch(); // ⚡ 前端看门狗：动态秒数 + 45s 未就绪自动重载
     try {
       new window.DocsAPI.DocEditor('placeholder', config);
     } catch (e) {
+      stopInitWatch();
       showError('编辑器初始化异常：' + escapeHTML(e.message) + '<br><a href="javascript:history.back()">返回</a>');
     }
   }
@@ -171,10 +208,14 @@ async function init() {
   }
 
   try {
+    // ⚡ 带上文件页的「内网/外网」模式：server 据此选择浏览器侧 DS 地址
+    //   （内网模式 → ONLYOFFICE_URL_INTERNAL 直连，编辑器资源走局域网秒级加载）
+    let netMode = 'internal';
+    try { netMode = localStorage.getItem('panel_network') === 'external' ? 'external' : 'internal'; } catch { /* ignore */ }
     const res = await fetch('/api/onlyoffice/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: filePath }),
+      body: JSON.stringify({ path: filePath, net: netMode }),
     });
     if (res.status === 401) { showError('登录已失效，请先登录面板。<br><a href="/">去登录</a>'); return; }
     const data = await res.json().catch(() => ({}));
