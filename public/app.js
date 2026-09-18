@@ -1837,9 +1837,11 @@ function preheatOnlyOffice() {
       if (frame.parentNode) frame.parentNode.removeChild(frame);
       if (!mark) { try { sessionStorage.removeItem('oo_preheated'); } catch { /* ignore */ } }
     };
-    frame.onload = () => setTimeout(() => { cleanup(true); toast('⚡ 编辑器资源预热完成，打开文档更快'); }, 5000);
+    // ⚠️ 预热 iframe 必须常驻：cache-scripts.html 的 onload 仅代表外壳 HTML 完成，
+    //    sdk 内核/字体（20-40MB）仍在 iframe 内异步下载，提前移除会中止下载导致预热失效。
+    //    生命周期跟随面板标签页；仅网络错误时清理标记以便重试。
+    frame.onload = () => toast('⚡ 编辑器资源预热已启动，首次约需几分钟，完成后打开文档秒开');
     frame.onerror = () => cleanup(false);
-    setTimeout(() => { if (frame.parentNode) cleanup(false); }, 90000);
     document.body.appendChild(frame);
     console.log('[OnlyOffice] 静态资源预热已启动:', frame.src);
   })();
