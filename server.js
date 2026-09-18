@@ -516,6 +516,22 @@ function panelBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+// ⚡ 浏览器侧 DS 地址选择（编辑器静态资源用）：
+//   1) 显式 net（文件页内/外网切换）优先；
+//   2) 否则按请求来源 host 推断：内网 IP 访问面板 → 用内网直连地址（局域网带宽下 20MB+ 资源秒级加载）；
+//   3) 未配置内网地址 → 一律 ONLYOFFICE_URL。
+function isLanRequest(req) {
+  const reqHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().split(':')[0];
+  return reqHost === '::1' || /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(reqHost) || /\.local$/i.test(reqHost);
+}
+function browserOnlyOfficeUrl(req, net) {
+  const n = String(net || '');
+  if (n === 'internal' && ONLYOFFICE_URL_INTERNAL) return ONLYOFFICE_URL_INTERNAL;
+  if (n === 'external') return ONLYOFFICE_URL;
+  if (ONLYOFFICE_URL_INTERNAL && isLanRequest(req)) return ONLYOFFICE_URL_INTERNAL;
+  return ONLYOFFICE_URL;
+}
+
 // ── OnlyOffice 健康探测（后台缓存，60s 刷新）─────────────────────
 // ⚡ 性能：config 接口直接读缓存结果，打开文件不再串行等待探测。
 //   探测在后台按 60s 周期进行；服务启动时立即探测一次完成预热。
@@ -1065,6 +1081,8 @@ async function handleAPI(req, res, pathname, url) {
       initialized: users.users.length > 0,
       authenticated: !!s,
       onlyoffice: !!ONLYOFFICE_URL,
+      // ⚡ 登录态才下发浏览器侧 DS 地址：文件列表页用它预热编辑器静态资源（官方 cache-scripts 预载 iframe）
+      onlyofficeUrl: s && ONLYOFFICE_URL ? browserOnlyOfficeUrl(req, '') : undefined,
       user: s ? { id: s.user.id, username: s.user.username, name: s.user.name, avatar: s.user.avatar } : null,
     });
   }
@@ -1388,8 +1406,7 @@ async function handleAPI(req, res, pathname, url) {
     //   body.net = 'internal'（文件页切「内网」）→ 用内网直连地址（局域网带宽下 20MB+ 编辑器资源秒级加载）
     //   body.net = 'external' 或未配置内网地址 → 用 ONLYOFFICE_URL（外网域名/默认）
     //   注意：这只影响浏览器加载编辑器静态资源；document.url / callbackUrl 仍走 PANEL_URL（DS 容器内访问面板），不受影响。
-    const net = String(body.net || '');
-    const browserOO = (net === 'internal' && ONLYOFFICE_URL_INTERNAL) ? ONLYOFFICE_URL_INTERNAL : ONLYOFFICE_URL;
+    const browserOO = browserOnlyOfficeUrl(req, body.net);
     return sendJSON(res, 200, { onlyofficeUrl: browserOO, onlyofficeUp, config });
   }
 
@@ -1459,9 +1476,7 @@ function serveStatic(req, res, pathname) {
     // 编辑页：注入 OnlyOffice 地址 → 浏览器可在请求 config 的同时并行预下载 api.js，加速编辑器加载
     // ⚡ 按请求来源 host 推断内外网：内网 IP 访问时优先注入内网直连地址（局域网带宽下编辑器资源秒级加载）
     if (pathname === '/edit.html') {
-      const reqHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().split(':')[0];
-      const isLan = reqHost === '::1' || /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(reqHost) || /\.local$/i.test(reqHost);
-      const injectUrl = (isLan && ONLYOFFICE_URL_INTERNAL) ? ONLYOFFICE_URL_INTERNAL : ONLYOFFICE_URL;
+      const injectUrl = browserOnlyOfficeUrl(req, '');
       const safe = String(injectUrl || '').replace(/</g, '\\u003c');
       out = Buffer.from(data.toString('utf8').replace('window.__OO_URL__ = "";', `window.__OO_URL__ = ${JSON.stringify(safe)};`), 'utf8');
     }

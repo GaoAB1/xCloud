@@ -1805,8 +1805,44 @@ async function enterDashboard() {
   setSegActive($('#network-seg'), netBtn);
   $('#foot-net').textContent = networkMode === 'internal' ? '内网' : '外网';
   setActiveTab('home');
+  preheatOnlyOffice(); // ⚡ 空闲预热 OnlyOffice 编辑器静态资源，打开文件秒开
   try { await loadApps(); } catch (e) { /* ignore */ }
   loadWeather();
+}
+
+/* ── OnlyOffice 静态资源预热（官方 cache-scripts 预载 iframe）─────
+   编辑器 iframe 内要拉 20MB+ 的 sdk 内核，等用户点开文件才开始下，
+   慢链路必超编辑器看门狗（"connection is too slow"）。
+   官方方案（Docs API v9.0+）：在停留页面插入隐藏 iframe 指向
+   /web-apps/apps/api/documents/cache-scripts.html，编辑器静态资源
+   （JS/CSS/字体）在 iframe 上下文中加载进浏览器 HTTP 缓存——
+   注意必须用 iframe，link/fetch 无法正确触发编辑器资源的加载缓存。
+   之后打开任何文档，看门狗窗口内直接命中缓存。 */
+function preheatOnlyOffice() {
+  (async () => {
+    let ooUrl = '';
+    try { ooUrl = (await api('/api/status')).onlyofficeUrl || ''; } catch { return; }
+    if (!ooUrl) return;
+    let done = false;
+    try { done = sessionStorage.getItem('oo_preheated') === '1'; } catch { /* ignore */ }
+    if (done) return;
+    try { sessionStorage.setItem('oo_preheated', '1'); } catch { /* ignore */ }
+    const base = String(ooUrl).replace(/\/+$/, '');
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.src = base + '/web-apps/apps/api/documents/cache-scripts.html';
+    // 预载完成（或超时）后移除 iframe 释放内存；失败不阻塞、下次会话可重试
+    const cleanup = (mark) => {
+      if (frame.parentNode) frame.parentNode.removeChild(frame);
+      if (!mark) { try { sessionStorage.removeItem('oo_preheated'); } catch { /* ignore */ } }
+    };
+    frame.onload = () => setTimeout(() => cleanup(true), 5000);
+    frame.onerror = () => cleanup(false);
+    setTimeout(() => { if (frame.parentNode) cleanup(false); }, 90000);
+    document.body.appendChild(frame);
+    console.log('[OnlyOffice] 静态资源预热已启动:', frame.src);
+  })();
 }
 
 /* ── 启动 ──────────────────────────────────────────────────────── */
