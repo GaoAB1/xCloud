@@ -23,6 +23,9 @@ services:
       - onlyoffice
 
   onlyoffice:
+    # ⚠️ 必须 DocumentServer ≥ v9.4.0（官方修复 Editor.bin 被 gzip 慢压缩导致的
+    #    "The connection is too slow" 报错，见 ONLYOFFICE/DocumentServer#3627）。
+    #    若本地 latest 镜像早于 2026-05，请执行：docker compose pull onlyoffice
     image: onlyoffice/documentserver:latest
     container_name: onlyoffice
     restart: unless-stopped

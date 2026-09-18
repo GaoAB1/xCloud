@@ -62,6 +62,33 @@ const DEPLOY_HINT =
   '<code style="display:inline-block;background:#f2f2f7;padding:4px 10px;border-radius:8px;margin:6px 0">docker compose up -d onlyoffice</code><br>' +
   '或单独运行：<code style="display:inline-block;background:#f2f2f7;padding:4px 10px;border-radius:8px;margin:6px 0">docker run -d -p 8080:80 onlyoffice/documentserver</code>';
 
+/* ── "connection is too slow" 自动重试 ─────────────────────────
+   该报错来自编辑器前端的组件加载看门狗：静态资源 / Editor.bin 在
+   超时窗口内没加载完就报错。常见诱因：
+   1) DS 内置 nginx 对 Editor.bin 做 gzip 慢压缩（官方 issue #3627，
+      DocumentServer v9.4.0 已修复 → docker compose pull onlyoffice 升级）
+   2) DS 刚重启时转换服务高负载，静态资源响应被拖慢
+   3) 外网慢链路下载编辑器静态资源
+   重载后资源大多已进入浏览器 HTTP 缓存，通常第二次即可成功。
+   用 sessionStorage 限制自动重载次数，防止 DS 真不可用时无限刷新。 */
+const OO_SLOW_RETRY_KEY = 'oo_slow_retry';
+const OO_SLOW_MAX_RETRY = 1;
+
+function isSlowConnError(desc) {
+  return /connection is too slow|components could not be loaded/i.test(String(desc));
+}
+
+function autoRetrySlowConn(desc) {
+  let n = 0;
+  try { n = parseInt(sessionStorage.getItem(OO_SLOW_RETRY_KEY) || '0', 10) || 0; } catch { /* ignore */ }
+  if (n >= OO_SLOW_MAX_RETRY) return false;
+  try { sessionStorage.setItem(OO_SLOW_RETRY_KEY, String(n + 1)); } catch { /* ignore */ }
+  console.warn('[OnlyOffice] 连接过慢，自动重载第 ' + (n + 1) + ' 次…', desc);
+  setStageText('连接过慢，正在自动重载（第 ' + (n + 1) + ' 次）…');
+  setTimeout(function () { location.reload(); }, 1200);
+  return true;
+}
+
 function loadEditor(ooUrl, config) {
   const base = ooUrl.replace(/\/+$/, '');
   const apiUrl = base + '/web-apps/apps/api/documents/api.js';
@@ -78,11 +105,18 @@ function loadEditor(ooUrl, config) {
       markStage('文档打开（含服务端转换/拉取）');
       dumpTimings();
       console.log('[OnlyOffice] document ready');
+      // 打开成功：清零自动重试计数
+      try { sessionStorage.removeItem(OO_SLOW_RETRY_KEY); } catch { /* ignore */ }
     },
     onError: function (event) {
       console.error('[OnlyOffice] editor error', event);
       var desc = (event && event.data && (event.data.description || event.data.error || JSON.stringify(event.data))) || '未知错误';
-      showError('OnlyOffice 编辑器错误：<br>' + escapeHTML(String(desc)) + '<br><br>' + DEPLOY_HINT + '<br><a href="javascript:history.back()">返回</a>');
+      // 看门狗超时：先自动重载一次（资源已在浏览器缓存，二次加载通常可过）
+      if (isSlowConnError(desc) && autoRetrySlowConn(desc)) return;
+      var hint = isSlowConnError(desc)
+        ? '<br>常见原因：OnlyOffice 版本过旧（Editor.bin gzip 慢，官方 v9.4.0 已修复，请执行 <code>docker compose pull onlyoffice</code> 升级）或 DS 刚重启转换负载高。<br><br>'
+        : '<br><br>';
+      showError('OnlyOffice 编辑器错误：<br>' + escapeHTML(String(desc)) + hint + DEPLOY_HINT + '<br><a href="javascript:history.back()">返回</a>');
     },
     onWarning: function (event) { console.warn('[OnlyOffice] warning', event); },
   };
