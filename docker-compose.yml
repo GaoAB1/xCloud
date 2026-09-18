@@ -43,10 +43,11 @@ services:
       - JAVA_OPTS=${JAVA_OPTS:--Xms512m -Xmx1024m}
       # 关闭自动更新检查，减少后台定时任务抢占资源
       - ENABLE_UPDATE_CHECK=false
-      # 跳过每次启动的字体列表重建（/usr/share/fonts 已持久化，字体集合不变时无需重建，
-      # 可显著加快容器重启后的就绪速度）。
-      # 注意：镜像升级后或新增了字体，需临时改回 true 重启一次以重建字体列表。
-      - GENERATE_FONTS=${GENERATE_FONTS:-false}
+      # ⚠️ 必须保持 true（默认）：AllFonts.js 是容器每次启动时由 allfontsgen
+      #    运行时生成的（9.4 实测：image 内不含该文件），设 false 会导致
+      #    /{version}/sdkjs/common/AllFonts.js 404 → 编辑器字体加载失败、初始化卡死。
+      #    代价是每次容器启动多 30-60s 的字体重建，属于必要开销。
+      - GENERATE_FONTS=${GENERATE_FONTS:-true}
     # 4G 内存机器建议：给 OnlyOffice 分配 2.5G 上限，给面板和系统留余量
     mem_limit: ${ONLYOFFICE_MEM_LIMIT:-2560m}
     volumes:
