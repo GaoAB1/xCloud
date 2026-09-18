@@ -1,11 +1,48 @@
 'use strict';
 
-/* OnlyOffice 编辑器加载 */
+/* OnlyOffice 编辑器加载（带分阶段计时，便于定位打开慢的环节） */
+
 const params = new URLSearchParams(location.search);
 const filePath = params.get('path') || '';
 
+/* ── 计时器 ─────────────────────────────────────────────────── */
+const T0 = performance.now();
+const stages = []; // { name, at(ms), done(ms|null) }
+let currentStageEl = null;
+
+function markStage(name) {
+  const last = stages[stages.length - 1];
+  if (last && last.done == null) last.done = performance.now() - T0;
+  stages.push({ name, at: performance.now() - T0, done: null });
+  setStageText(name);
+}
+function finishStages() {
+  const last = stages[stages.length - 1];
+  if (last && last.done == null) last.done = performance.now() - T0;
+}
+function fmtStage(s) {
+  const cost = s.done != null ? `${(s.done - s.at).toFixed(0)}ms` : '进行中…';
+  return `${s.name}: ${cost}`;
+}
+function dumpTimings() {
+  finishStages();
+  console.group('[OnlyOffice] 打开耗时');
+  stages.forEach((s) => console.log(`  ${fmtStage(s)}（始于 ${(s.at / 1000).toFixed(1)}s）`));
+  console.log(`  总计: ${((performance.now() - T0) / 1000).toFixed(1)}s`);
+  console.groupEnd();
+}
+// 界面提示：当前阶段 + 已完成阶段的耗时（长时间等待时可直观看到卡在哪）
+function setStageText(text) {
+  const el = document.querySelector('#loading span');
+  if (!el) return;
+  currentStageEl = el;
+  const doneParts = stages.filter((s) => s.done != null).map((s) => `${s.name} ${(s.done / 1000).toFixed(1)}s`);
+  el.innerHTML = escapeHTML(text) + (doneParts.length ? `<br><span style="font-size:12px;color:#a1a1aa">${escapeHTML(doneParts.join(' · '))}</span>` : '');
+}
+
 function showError(msg) {
   hideLoading();
+  dumpTimings();
   const e = document.getElementById('error');
   e.innerHTML = msg;
   e.hidden = false;
@@ -33,10 +70,15 @@ function loadEditor(ooUrl, config) {
   config.events = {
     // 编辑器 UI 真正就绪后再隐藏加载遮罩（onAppReady 触发即代表 iframe 已渲染出界面）
     onAppReady: function () {
+      markStage('编辑器初始化');
       console.log('[OnlyOffice] app ready');
       hideLoading();
     },
-    onDocumentReady: function () { console.log('[OnlyOffice] document ready'); },
+    onDocumentReady: function () {
+      markStage('文档打开（含服务端转换/拉取）');
+      dumpTimings();
+      console.log('[OnlyOffice] document ready');
+    },
     onError: function (event) {
       console.error('[OnlyOffice] editor error', event);
       var desc = (event && event.data && (event.data.description || event.data.error || JSON.stringify(event.data))) || '未知错误';
@@ -46,6 +88,7 @@ function loadEditor(ooUrl, config) {
   };
 
   function mount() {
+    markStage('编辑器初始化');
     try {
       new window.DocsAPI.DocEditor('placeholder', config);
     } catch (e) {
@@ -80,6 +123,7 @@ function escapeHTML(s) {
 
 async function init() {
   if (!filePath) { showError('缺少文件路径参数。<br><a href="javascript:history.back()">返回</a>'); return; }
+  markStage('获取编辑配置');
 
   // 加速优化：服务器已在 HTML 中注入 window.__OO_URL__，
   // 页面加载时立即开始预下载 api.js，与后端 config 请求并行，减少串行等待
@@ -108,6 +152,7 @@ async function init() {
       );
       return;
     }
+    markStage('下载编辑器内核 api.js');
     // 若上面已并行预下载过 api.js，这里 loadEditor 里会直接复用缓存
     loadEditor(data.onlyofficeUrl, data.config);
   } catch (e) {
@@ -132,4 +177,5 @@ function preloadApi(ooUrl) {
   return p;
 }
 
+window.addEventListener('beforeunload', dumpTimings);
 init();

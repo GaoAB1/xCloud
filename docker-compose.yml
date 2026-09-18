@@ -36,14 +36,26 @@ services:
       - JAVA_OPTS=${JAVA_OPTS:--Xms512m -Xmx1024m}
       # 关闭自动更新检查，减少后台定时任务抢占资源
       - ENABLE_UPDATE_CHECK=false
+      # 跳过每次启动的字体列表重建（/usr/share/fonts 已持久化，字体集合不变时无需重建，
+      # 可显著加快容器重启后的就绪速度）。
+      # 注意：镜像升级后或新增了字体，需临时改回 true 重启一次以重建字体列表。
+      - GENERATE_FONTS=${GENERATE_FONTS:-false}
     # 4G 内存机器建议：给 OnlyOffice 分配 2.5G 上限，给面板和系统留余量
     mem_limit: ${ONLYOFFICE_MEM_LIMIT:-2560m}
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_log:/var/log/onlyoffice
       - onlyoffice_fonts:/usr/share/fonts
+      # ⚡ 打开速度关键：转换缓存持久化（官方标准卷）
+      #   /var/lib/onlyoffice   → documentserver/App_Data/cache，转换后的文档缓存
+      #   /var/lib/postgresql   → DS 内置数据库，存 document key → 缓存文件的映射
+      #   两者必须同时持久化，否则容器每次重启后所有文件都要重新转换（4G NAS 上可达数分钟）
+      - onlyoffice_cache:/var/lib/onlyoffice
+      - onlyoffice_db:/var/lib/postgresql
 
 volumes:
   onlyoffice_data:
   onlyoffice_log:
   onlyoffice_fonts:
+  onlyoffice_cache:
+  onlyoffice_db:

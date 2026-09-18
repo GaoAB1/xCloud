@@ -512,6 +512,32 @@ function panelBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+// ── OnlyOffice 健康探测（后台缓存，60s 刷新）─────────────────────
+// ⚡ 性能：config 接口直接读缓存结果，打开文件不再串行等待探测。
+//   探测在后台按 60s 周期进行；服务启动时立即探测一次完成预热。
+const ooProbe = { up: false, at: 0, timer: null };
+const OO_PROBE_MS = 60 * 1000;
+async function probeOnlyOffice() {
+  try {
+    const r = await fetch((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', {
+      signal: AbortSignal.timeout(2500),
+      headers: { 'User-Agent': 'xCloud/1.0' },
+    });
+    const text = (await r.text()).trim();
+    ooProbe.up = r.ok && text === 'true';
+  } catch {
+    ooProbe.up = false;
+  }
+  ooProbe.at = Date.now();
+  return ooProbe.up;
+}
+function startOnlyOfficeProbe() {
+  if (ooProbe.timer) return;
+  probeOnlyOffice();
+  ooProbe.timer = setInterval(probeOnlyOffice, OO_PROBE_MS);
+  ooProbe.timer.unref?.();
+}
+
 // 从 OnlyOffice 下载已保存的文档（回调 url）
 async function downloadFromOnlyOffice(url) {
   let target = url;
@@ -1352,8 +1378,8 @@ async function handleAPI(req, res, pathname, url) {
     };
     // 整个 config 用 JWT 签名（OnlyOffice 浏览器侧和服务端共用同一密钥校验）
     config.token = signJWT(config);
-    const probe = await fetchWithTimeout((ONLYOFFICE_INTERNAL_URL || ONLYOFFICE_URL) + '/healthcheck', 2500).catch(() => 'false');
-    const onlyofficeUp = probe === true || probe === 'true' || !!probe;
+    // ⚡ healthcheck 结果缓存 60s（后台刷新）：打开文件时不再串行等待探测（此前最多阻塞 2.5s）
+    const onlyofficeUp = ooProbe.up;
     return sendJSON(res, 200, { onlyofficeUrl: ONLYOFFICE_URL, onlyofficeUp, config });
   }
 
@@ -1461,6 +1487,9 @@ server.listen(PORT, () => {
   console.log('');
   if (users.users.length === 0) console.log('  首次运行：请在浏览器打开后创建管理员账户。');
   else console.log(`  已配置账户：${users.users[0].username}`);
-  if (ONLYOFFICE_URL) console.log(`  OnlyOffice: ${ONLYOFFICE_URL}`);
+  if (ONLYOFFICE_URL) {
+    console.log(`  OnlyOffice: ${ONLYOFFICE_URL}`);
+    startOnlyOfficeProbe(); // ⚡ 启动即预热探测（后台 60s 周期刷新，不阻塞）
+  }
   console.log('');
 });
